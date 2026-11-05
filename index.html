@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Multiplayer Bingo</title>
+    <script src="https://jsdelivr.net"></script>
+    <script src="https://tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+    <!-- Lobby Screen -->
+    <div id="lobby-screen" class="w-full max-w-md bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700">
+        <h1 class="text-3xl font-extrabold text-center mb-6 text-indigo-400 tracking-wide">🏆 Team Bingo</h1>
+        
+        <div class="mb-5">
+            <label class="block text-sm font-medium mb-1 text-slate-300">Your Nickname</label>
+            <input type="text" id="username-input" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter name...">
+        </div>
+
+        <div class="space-y-4">
+            <button id="create-room-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 transition font-bold py-3 rounded-lg shadow-lg">
+                Create New Room
+            </button>
+            
+            <div class="relative flex py-2 items-center">
+                <div class="flex-grow border-t border-slate-600"></div>
+                <span class="flex-shrink mx-4 text-slate-400 text-sm">OR</span>
+                <div class="flex-grow border-t border-slate-600"></div>
+            </div>
+
+            <div class="flex gap-2">
+                <input type="text" id="room-code-input" maxlength="6" class="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-center text-xl font-mono uppercase tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="ROOM CODE">
+                <button id="join-room-btn" class="bg-emerald-600 hover:bg-emerald-700 transition font-bold px-6 py-2 rounded-lg">
+                    Join
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Waiting Room Screen -->
+    <div id="waiting-screen" class="hidden w-full max-w-xl bg-slate-800 p-6 rounded-2xl shadow-xl border border-slate-700">
+        <div class="text-center mb-6">
+            <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Room Code</span>
+            <h2 id="display-room-code" class="text-4xl font-mono font-black text-indigo-400 tracking-widest mt-1">------</h2>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <!-- Team A -->
+            <div class="bg-slate-700/50 p-4 rounded-xl border border-blue-500/30">
+                <h3 class="font-bold text-blue-400 text-lg mb-2 flex justify-between items-center">
+                    🔵 Team A <button id="join-team-a" class="text-xs bg-blue-600 hover:bg-blue-700 px-2 py-1 rounded">Join</button>
+                </h3>
+                <ul id="team-a-list" class="space-y-1 text-sm text-slate-300 min-h-[100px]"></ul>
+            </div>
+            <!-- Team B -->
+            <div class="bg-slate-700/50 p-4 rounded-xl border border-pink-500/30">
+                <h3 class="font-bold text-pink-400 text-lg mb-2 flex justify-between items-center">
+                    🔴 Team B <button id="join-team-b" class="text-xs bg-pink-600 hover:bg-pink-700 px-2 py-1 rounded">Join</button>
+                </h3>
+                <ul id="team-b-list" class="space-y-1 text-sm text-slate-300 min-h-[100px]"></ul>
+            </div>
+        </div>
+
+        <button id="start-game-btn" class="hidden w-full bg-amber-500 hover:bg-amber-600 text-slate-900 transition font-extrabold py-3 rounded-lg text-lg">
+            🚀 Start Match
+        </button>
+    </div>
+
+    <!-- Game Arena Screen -->
+    <div id="game-screen" class="hidden w-full max-w-4xl grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Sidebar Match Status -->
+        <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700 flex flex-col justify-between">
+            <div>
+                <h2 class="text-xl font-bold border-b border-slate-700 pb-2 mb-4 text-indigo-400">Match Info</h2>
+                <div class="space-y-3">
+                    <div>
+                        <span class="text-xs text-slate-400 uppercase">Your Team</span>
+                        <p id="user-team-display" class="text-lg font-bold">Assigning...</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-slate-400 uppercase">Turn Indicator</span>
+                        <p id="turn-display" class="text-xl font-black text-amber-400 animate-pulse">Waiting...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-6">
+                <h3 class="text-xs uppercase text-slate-400 font-bold mb-2">Called Numbers</h3>
+                <div id="called-numbers-container" class="flex flex-wrap gap-1.5 max-h-[150px] overflow-y-auto bg-slate-900 p-2 rounded-lg">
+                    <!-- Numbers go here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Bingo Grid Board -->
+        <div class="md:col-span-2 bg-slate-800 p-6 rounded-2xl border border-slate-700 flex flex-col items-center">
+            <div id="bingo-headers" class="grid grid-cols-5 gap-2 w-full max-w-md text-center text-2xl font-black text-indigo-400 mb-2">
+                <div>B</div><div>I</div><div>N</div><div>G</div><div>O</div>
+            </div>
+            <div id="bingo-board" class="grid grid-cols-5 gap-2 w-full max-w-md aspect-square bg-slate-900 p-3 rounded-xl border border-slate-700">
+                <!-- 25 Board Tiles dynamically inserted here -->
+            </div>
+            <p class="text-xs text-slate-400 mt-4 text-center">Cross off 5 cells horizontally, vertically, or diagonally to complete rows. Clicking valid called numbers helps your entire team!</p>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const SUPABASE_URL = "YOUR_SUPABASE_URL"; 
+        const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+        const supabase = Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- GAME VARIABLES ---
+        let playerId = crypto.randomUUID();
+        let currentRoom = null;
+        let myTeam = null;
+        let myBoard = [];
+        let username = "";
+        let roomSubscription = null;
+
+        // --- DOM ELEMENTS ---
+        const lobbyScreen = document.getElementById('lobby-screen');
+        const waitingScreen = document.getElementById('waiting-screen');
+        const gameScreen = document.getElementById('game-screen');
+        
+        // --- STEP 1: LOBBY LOGIC ---
+        document.getElementById('create-room-btn').addEventListener('click', async () => {
+            if (!validateUsername()) return;
+            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            const { data, error } = await supabase.from('rooms').insert([{
+                room_code: code,
+                host_id: playerId,
+                team_a_players: [{ id: playerId, name: username }],
+                game_state: { started: false, called_numbers: [], turn: "Team A" }
+            }]).select().single();
+
+            if (error) return alert("Failed to build room. Try again.");
+            myTeam = 'A';
+            setupRoom(data);
+        });
+
+        document.getElementById('join-room-btn').addEventListener('click', async () => {
+            if (!validateUsername()) return;
+            const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+            
+            const { data, error } = await supabase.from('rooms').select().eq('room_code', code).maybeSingle();
+            if (error || !data) return alert("Room code not found!");
+            if (data.game_state.started) return alert("This game has already started!");
+
+            // Default logic to balance room assignments automatically
+            let teamA = data.team_a_players || [];
+            let teamB = data.team_b_players || [];
+            
+            if (teamB.length < teamA.length) {
+                teamB.push({ id: playerId, name: username });
+                myTeam = 'B';
+            } else {
+                teamA.push({ id: playerId, name: username });
+                myTeam = 'A';
+            }
+
+            await supabase.from('rooms').update({ team_a_players: teamA, team_b_players: teamB }).eq('id', data.id);
+            setupRoom(data);
+        });
+
+        function validateUsername() {
+            username = document.getElementById('username-input').value.trim();
+            if (!username) { alert("Please input a valid player name!"); return false; }
+            return true;
+        }
+
+        // --- STEP 2: ROOM REALTIME SYNCHRONIZATION ---
+        function setupRoom(room) {
+            currentRoom = room;
+            lobbyScreen.classList.add('hidden');
+            waitingScreen.classList.remove('hidden');
+            document.getElementById('display-room-code').innerText = room.room_code;
+
+            if (room.host_id === playerId) {
+                document.getElementById('start-game-btn').classList.remove('hidden');
+            }
+
+            // Real-Time subscription setup for dynamic game UI changes
+            roomSubscription = supabase.channel(`room:${room.id}`)
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` }, 
+                payload => {
+                    currentRoom = payload.new;
+                    renderWaitingRoom();
+                    if (currentRoom.game_state.started && gameScreen.classList.contains('hidden')) {
+                        launchGameArena();
+                    } else if (currentRoom.game_state.started) {
+                        updateLiveGameView();
+                    }
+                })
