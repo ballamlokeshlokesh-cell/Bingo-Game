@@ -83,7 +83,10 @@
         for (let row = 0; row < 5; row++) lines.push(Array.from({ length: 5 }, (_, col) => row * 5 + col));
         for (let col = 0; col < 5; col++) lines.push(Array.from({ length: 5 }, (_, row) => row * 5 + col));
         lines.push([0, 6, 12, 18, 24], [4, 8, 12, 16, 20]);
-        return lines.some(line => line.every(index => board[index].free || called.includes(board[index].value)));
+        return lines.some(line => line.every(index => {
+          const cell = board[index];
+          return cell.free || called.includes(cell.value);
+        }));
       }
 
       function render() {
@@ -94,13 +97,16 @@
           heading.textContent = letter;
           boardElement.append(heading);
         });
+
         board.forEach(cell => {
           const tile = document.createElement('div');
-          tile.className = `cell${cell.free ? ' free marked' : ''}${called.includes(cell.value) ? ' marked' : ''}`;
-          tile.textContent = cell.free ? 'FREE' : cell.value;
-          if (called.includes(cell.value)) tile.setAttribute('aria-label', `${cell.value}, marked`);
+          const isMarked = cell.free || called.includes(cell.value);
+          tile.className = `cell${cell.free ? ' free marked' : ''}${isMarked ? ' marked' : ''}`;
+          tile.textContent = cell.free ? 'FREE' : cell.display;
+          if (isMarked) tile.setAttribute('aria-label', `${cell.display}, marked`);
           boardElement.append(tile);
         });
+
         calledList.replaceChildren();
         called.forEach(value => {
           const chip = document.createElement('span');
@@ -108,6 +114,7 @@
           chip.textContent = value;
           calledList.append(chip);
         });
+
         drawButton.disabled = remaining.length === 0 || hasBingo();
       }
 
@@ -115,11 +122,14 @@
         board = [];
         for (let col = 0; col < 5; col++) {
           const start = col * 15 + 1;
-          shuffled(Array.from({ length: 15 }, (_, i) => start + i)).slice(0, 5).forEach((value, row) => {
-            board[row * 5 + col] = { value, free: false };
-          });
+          shuffled(Array.from({ length: 15 }, (_, i) => start + i))
+            .slice(0, 5)
+            .forEach((value, row) => {
+              board[row * 5 + col] = { value: `${letters[col]}${value}`, display: value, free: false };
+            });
         }
-        board[12] = { value: 'FREE', free: true };
+
+        board[12] = { value: 'FREE', display: 'FREE', free: true };
         remaining = shuffled(Array.from({ length: 75 }, (_, i) => {
           const number = i + 1;
           return `${letters[Math.floor((number - 1) / 15)]}${number}`;
@@ -139,6 +149,7 @@
         else if (!remaining.length) message.textContent = 'No numbers left. Start a new game to try again.';
         render();
       });
+
       document.getElementById('new-game').addEventListener('click', newGame);
       newGame();
     })();
