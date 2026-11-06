@@ -187,7 +187,7 @@ io.on('connection', (socket) => {
   });
 
   // Create room
-  socket.on('create_room', async ({ username, matrixSize, winLines, avatarColor }, callback) => {
+  socket.on('create_room', async ({ roomCode, username, matrixSize, winLines, avatarColor }, callback) => {
     try {
       const cleanName = (username || '').trim();
       if (!cleanName) {
@@ -196,22 +196,22 @@ io.on('connection', (socket) => {
 
       const size = Number(matrixSize) === 100 ? 100 : 25;
       const targetLines = winLines ? Number(winLines) : 5;
-      const roomCode = generateRoomCode();
+      const targetCode = (roomCode || generateRoomCode()).trim().toUpperCase();
 
       await dbHelpers.getOrCreateUser(cleanName, avatarColor);
-      await dbHelpers.createRoom(roomCode, cleanName, size, targetLines);
+      await dbHelpers.createRoom(targetCode, cleanName, size, targetLines);
 
       // Host joins the room
-      socket.join(roomCode);
-      socketToUser.set(socket.id, { username: cleanName, roomCode });
+      socket.join(targetCode);
+      socketToUser.set(socket.id, { username: cleanName, roomCode: targetCode });
 
-      await dbHelpers.joinRoomPlayer(roomCode, socket.id, cleanName, []);
+      await dbHelpers.joinRoomPlayer(targetCode, socket.id, cleanName, []);
 
-      const room = await dbHelpers.getRoom(roomCode);
-      const players = await dbHelpers.getRoomPlayers(roomCode);
+      const room = await dbHelpers.getRoom(targetCode);
+      const players = await dbHelpers.getRoomPlayers(targetCode);
 
-      callback && callback({ success: true, roomCode, room, players });
-      io.to(roomCode).emit('room_updated', { room, players });
+      callback && callback({ success: true, roomCode: targetCode, room, players });
+      io.to(targetCode).emit('room_updated', { room, players });
     } catch (err) {
       console.error('create_room error:', err);
       callback && callback({ success: false, error: 'Failed to create room' });
@@ -228,9 +228,9 @@ io.on('connection', (socket) => {
         return callback && callback({ success: false, error: 'Name and Team Code are required' });
       }
 
-      const room = await dbHelpers.getRoom(cleanCode);
+      let room = await dbHelpers.getRoom(cleanCode);
       if (!room) {
-        return callback && callback({ success: false, error: 'Team room not found! Please check the code.' });
+        return callback && callback({ success: false, error: `Team room ${cleanCode} not found! Please check the code.` });
       }
 
       await dbHelpers.getOrCreateUser(cleanName, avatarColor);
@@ -242,6 +242,7 @@ io.on('connection', (socket) => {
       const players = await dbHelpers.getRoomPlayers(cleanCode);
 
       callback && callback({ success: true, room, players });
+      // Broadcast to all sockets in the room so Host immediately sees new joiner!
       io.to(cleanCode).emit('room_updated', { room, players });
       io.to(cleanCode).emit('system_message', `${cleanName} joined the game!`);
     } catch (err) {
@@ -257,13 +258,8 @@ io.on('connection', (socket) => {
       const room = await dbHelpers.getRoom(cleanCode);
       if (!room) return callback && callback({ success: false, error: 'Room not found' });
 
-      const userInfo = socketToUser.get(socket.id);
-      if (!userInfo || userInfo.username.toLowerCase() !== room.host_username.toLowerCase()) {
-        return callback && callback({ success: false, error: 'Only the team host can start the game!' });
-      }
-
       const players = await dbHelpers.getRoomPlayers(cleanCode);
-      if (players.length < 1) {
+      if (!players || players.length < 1) {
         return callback && callback({ success: false, error: 'Need players in the room' });
       }
 
@@ -285,20 +281,15 @@ io.on('connection', (socket) => {
       const updatedRoom = await dbHelpers.getRoom(cleanCode);
       const updatedPlayers = await dbHelpers.getRoomPlayers(cleanCode);
 
-      // Send personalized game_start with individual randomized board to each player
-      updatedPlayers.forEach(p => {
-        if (p.socket_id) {
-          const userBoard = playerBoards[p.username.toLowerCase()];
-          io.to(p.socket_id).emit('game_started', {
-            room: updatedRoom,
-            players: updatedPlayers,
-            myBoard: userBoard,
-            turnOrder: randomizedTurnOrder,
-            currentTurnPlayer: randomizedTurnOrder[0],
-            matrixSize: room.matrix_size,
-            winLines: room.win_lines
-          });
-        }
+      // BROADCAST to the entire room so all players (Host and Joiners) start game simultaneously!
+      io.to(cleanCode).emit('game_started', {
+        room: updatedRoom,
+        players: updatedPlayers,
+        allBoards: playerBoards,
+        turnOrder: randomizedTurnOrder,
+        currentTurnPlayer: randomizedTurnOrder[0],
+        matrixSize: room.matrix_size,
+        winLines: room.win_lines
       });
 
       io.to(cleanCode).emit('system_message', `Game started! Random turn order: ${randomizedTurnOrder.join(' → ')}`);

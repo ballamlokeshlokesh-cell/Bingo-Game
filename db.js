@@ -111,25 +111,42 @@ const dbHelpers = {
     });
   },
 
-  // Create room
+  // Create room (upsert)
   createRoom: (roomCode, hostUsername, matrixSize = 25, winLines = 5) => {
     return new Promise((resolve, reject) => {
       db.run(
         `INSERT INTO rooms (room_code, host_username, matrix_size, win_lines, status, turn_order, current_turn_index, called_numbers)
-         VALUES (?, ?, ?, ?, 'waiting', '[]', 0, '[]')`,
+         VALUES (?, ?, ?, ?, 'waiting', '[]', 0, '[]')
+         ON CONFLICT(room_code) DO UPDATE SET
+           host_username = excluded.host_username,
+           matrix_size = excluded.matrix_size,
+           win_lines = excluded.win_lines,
+           status = 'waiting',
+           turn_order = '[]',
+           current_turn_index = 0,
+           called_numbers = '[]',
+           winner_username = NULL,
+           updated_at = CURRENT_TIMESTAMP`,
         [roomCode, hostUsername, matrixSize, winLines],
         function (err) {
           if (err) return reject(err);
-          resolve({
-            room_code: roomCode,
-            host_username: hostUsername,
-            matrix_size: matrixSize,
-            win_lines: winLines,
-            status: 'waiting',
-            turn_order: [],
-            current_turn_index: 0,
-            called_numbers: []
-          });
+          // Clear any stale players from an earlier test of the same room code
+          db.run(
+            `DELETE FROM room_players WHERE room_code = ? AND username != ? COLLATE NOCASE`,
+            [roomCode, hostUsername],
+            () => {
+              resolve({
+                room_code: roomCode,
+                host_username: hostUsername,
+                matrix_size: matrixSize,
+                win_lines: winLines,
+                status: 'waiting',
+                turn_order: [],
+                current_turn_index: 0,
+                called_numbers: []
+              });
+            }
+          );
         }
       );
     });

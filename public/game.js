@@ -14,9 +14,7 @@
       if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume();
       }
-    } catch (e) {
-      // Audio not permitted or supported
-    }
+    } catch (e) {}
   }
 
   function playTone(freq, type = 'sine', duration = 0.15, gainVal = 0.1) {
@@ -76,11 +74,12 @@
     completedLines: [],
     gameActive: false,
     isOnline: false,
-    isLocalOnly: false,
     players: []
   };
 
-  // --- SAFE NETWORKING (Socket.IO + BroadcastChannel Fallback) ---
+  let lobbySyncInterval = null;
+
+  // --- SAFE NETWORKING ---
   let socket = null;
   const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('bingo_network_channel') : null;
 
@@ -104,14 +103,13 @@
         : 'http://localhost:3000';
 
       socket = io(socketUrl, {
-        reconnectionAttempts: 4,
-        timeout: 2500,
+        reconnectionAttempts: 5,
+        timeout: 3000,
         autoConnect: true
       });
 
       socket.on('connect', () => {
         state.isOnline = true;
-        state.isLocalOnly = false;
         updateNetworkStatus('online', 'Live Server');
         if (state.username) {
           socket.emit('init_user', { username: state.username, avatarColor: state.avatarColor });
@@ -120,23 +118,19 @@
 
       socket.on('connect_error', () => {
         state.isOnline = false;
-        state.isLocalOnly = true;
         updateNetworkStatus('offline', 'Multi-Tab Sync');
       });
 
       socket.on('disconnect', () => {
         state.isOnline = false;
-        state.isLocalOnly = true;
         updateNetworkStatus('offline', 'Multi-Tab Sync');
       });
     } catch (e) {
       state.isOnline = false;
-      state.isLocalOnly = true;
       updateNetworkStatus('offline', 'Multi-Tab Sync');
     }
   } else {
     state.isOnline = false;
-    state.isLocalOnly = true;
     updateNetworkStatus('offline', 'Multi-Tab Sync');
   }
 
@@ -311,7 +305,6 @@
     }
   }
 
-  // Edit profile button
   if (changeUserBtn) {
     changeUserBtn.addEventListener('click', () => {
       if (inputUsername) inputUsername.value = state.username;
@@ -324,7 +317,6 @@
     });
   }
 
-  // Avatar palette selection
   if (avatarPalette) {
     avatarPalette.addEventListener('click', (e) => {
       const dot = e.target.closest('.color-dot');
@@ -336,7 +328,7 @@
     });
   }
 
-  // --- ONBOARDING FORM SUBMISSION ---
+  // --- ONBOARDING FORM ---
   if (onboardingForm) {
     onboardingForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -359,7 +351,7 @@
     });
   }
 
-  // --- MATRIX SIZE RADIO SELECTION ---
+  // --- MATRIX SIZE SELECTION ---
   matrixCardOptions.forEach(card => {
     card.addEventListener('click', () => {
       matrixCardOptions.forEach(c => c.classList.remove('selected'));
@@ -422,12 +414,13 @@
     };
     state.currentRoom = roomData;
 
-    // Persist locally for multi-tab support
+    // Save to local storage for multi-tab
     localStorage.setItem('bingo_room_' + roomCode, JSON.stringify(roomData));
 
-    // Try online server first
+    // Emit to online server
     if (socket && state.isOnline) {
       socket.emit('create_room', {
+        roomCode: roomCode,
         username: state.username,
         avatarColor: state.avatarColor,
         matrixSize: selectedSize,
@@ -441,14 +434,14 @@
       });
     }
 
-    // Always render lobby immediately
     renderLobby(roomData, state.players);
     showView('lobby');
     showToast(`Team room ${roomCode} created!`);
+    startLobbyPolling(roomCode);
 
-    // Broadcast on multi-tab channel
-    broadcastMessage({
+    broadcastSyncMessage({
       type: 'ROOM_CREATED',
+      roomCode: roomCode,
       room: roomData,
       players: state.players
     });
@@ -472,7 +465,15 @@
     initAudio();
     playTone(400, 'sine', 0.1);
 
-    // Try online server first
+    const me = {
+      username: state.username,
+      avatarColor: state.avatarColor,
+      isHost: false,
+      isReady: true,
+      completedLines: 0
+    };
+
+    // If online via socket
     if (socket && state.isOnline) {
       socket.emit('join_room', {
         username: state.username,
@@ -488,6 +489,7 @@
           renderLobby(res.room, state.players);
           showView('lobby');
           showToast(`Joined team ${cleanCode}!`);
+          startLobbyPolling(cleanCode);
           return;
         } else if (res && res.error) {
           showToast(res.error);
@@ -495,12 +497,11 @@
       });
     }
 
-    // Check localStorage room (Multi-Tab P2P Fallback)
+    // Local / Multi-Tab Fallback
     const stored = localStorage.getItem('bingo_room_' + cleanCode);
     let room = stored ? JSON.parse(stored) : null;
 
     if (!room) {
-      // Create provisional room instance so joiners can always connect!
       room = {
         room_code: cleanCode,
         host_username: 'Host',
@@ -516,17 +517,12 @@
     state.matrixSize = room.matrix_size || 25;
     state.winLines = room.win_lines || 5;
 
-    // Add self to players
-    const existing = (room.players || []).find(p => p.username.toLowerCase() === state.username.toLowerCase());
-    if (!existing) {
-      room.players = room.players || [];
-      room.players.push({
-        username: state.username,
-        avatarColor: state.avatarColor,
-        isHost: state.isHost,
-        isReady: true,
-        completedLines: 0
-      });
+    room.players = room.players || [];
+    const idx = room.players.findIndex(p => p.username.toLowerCase() === state.username.toLowerCase());
+    if (idx >= 0) {
+      room.players[idx] = me;
+    } else {
+      room.players.push(me);
     }
     state.players = room.players;
     localStorage.setItem('bingo_room_' + cleanCode, JSON.stringify(room));
@@ -534,18 +530,14 @@
     renderLobby(room, state.players);
     showView('lobby');
     showToast(`Joined team ${cleanCode}!`);
+    startLobbyPolling(cleanCode);
 
-    // Notify other tabs
-    broadcastMessage({
+    // Notify other tabs immediately
+    broadcastSyncMessage({
       type: 'PLAYER_JOINED',
       roomCode: cleanCode,
-      player: {
-        username: state.username,
-        avatarColor: state.avatarColor,
-        isHost: state.isHost,
-        isReady: true,
-        completedLines: 0
-      }
+      player: me,
+      allPlayers: state.players
     });
   }
 
@@ -554,6 +546,64 @@
       e.preventDefault();
       handleJoinRoom();
     });
+  }
+
+  // --- LOBBY SYNC & HEARTBEAT POLLING ---
+  function startLobbyPolling(roomCode) {
+    if (lobbySyncInterval) clearInterval(lobbySyncInterval);
+
+    lobbySyncInterval = setInterval(() => {
+      if (!state.currentRoom || state.gameActive) {
+        clearInterval(lobbySyncInterval);
+        return;
+      }
+
+      // 1. Check socket if online
+      if (socket && state.isOnline) {
+        socket.emit('sync_game', { roomCode, username: state.username }, (res) => {
+          if (res && res.success) {
+            if (res.players && res.players.length !== state.players.length) {
+              state.players = res.players;
+              renderLobby(res.room, state.players);
+            }
+            if (res.room.status === 'playing' && !state.gameActive) {
+              clearInterval(lobbySyncInterval);
+              const myBoard = (res.players && res.players.find(p => p.username.toLowerCase() === state.username.toLowerCase())?.matrix_board) || res.myBoard || generateRandomBoard(res.room.matrix_size || 25);
+              startActiveGame({
+                room: res.room,
+                players: res.players,
+                myBoard: myBoard,
+                turnOrder: res.turnOrder,
+                currentTurnPlayer: res.currentTurnPlayer,
+                matrixSize: res.room.matrix_size,
+                winLines: res.room.win_lines
+              });
+            }
+          }
+        });
+      }
+
+      // 2. Check localStorage
+      const storedGame = localStorage.getItem('bingo_game_' + roomCode);
+      if (storedGame && !state.gameActive) {
+        const gameData = JSON.parse(storedGame);
+        clearInterval(lobbySyncInterval);
+        const myBoard = (gameData.allBoards && gameData.allBoards[state.username.toLowerCase()]) || generateRandomBoard(gameData.matrixSize || 25);
+        startActiveGame({
+          ...gameData,
+          myBoard: myBoard
+        });
+      }
+
+      const storedRoom = localStorage.getItem('bingo_room_' + roomCode);
+      if (storedRoom) {
+        const roomObj = JSON.parse(storedRoom);
+        if (roomObj.players && roomObj.players.length !== state.players.length) {
+          state.players = roomObj.players;
+          renderLobby(roomObj, state.players);
+        }
+      }
+    }, 1200);
   }
 
   // --- RENDER LOBBY ---
@@ -597,7 +647,7 @@
     }
   }
 
-  // Add Practice Bot (allows testing solo multiplayer turn switching!)
+  // Add Practice Bot
   if (btnAddBot) {
     btnAddBot.addEventListener('click', () => {
       if (!state.currentRoom) return;
@@ -617,10 +667,11 @@
       renderLobby(state.currentRoom, state.players);
       showToast(`Added AI Player: ${unusedName}!`);
 
-      broadcastMessage({
+      broadcastSyncMessage({
         type: 'PLAYER_JOINED',
         roomCode: state.currentRoom.room_code,
-        player: botPlayer
+        player: botPlayer,
+        allPlayers: state.players
       });
     });
   }
@@ -647,6 +698,7 @@
 
   if (leaveLobbyBtn) {
     leaveLobbyBtn.addEventListener('click', () => {
+      if (lobbySyncInterval) clearInterval(lobbySyncInterval);
       showView('hub');
     });
   }
@@ -662,7 +714,7 @@
       }
 
       appendChatMessage(state.username, msg);
-      broadcastMessage({
+      broadcastSyncMessage({
         type: 'CHAT',
         roomCode: state.currentRoom.room_code,
         username: state.username,
@@ -696,9 +748,14 @@
     if (!state.currentRoom) return;
     initAudio();
 
+    if (lobbySyncInterval) clearInterval(lobbySyncInterval);
+
+    // If online via socket
     if (socket && state.isOnline) {
-      startGameBtn.disabled = true;
-      startGameBtn.textContent = 'Randomizing & Starting...';
+      if (startGameBtn) {
+        startGameBtn.disabled = true;
+        startGameBtn.textContent = 'Starting...';
+      }
 
       socket.emit('start_game', { roomCode: state.currentRoom.room_code }, (res) => {
         if (startGameBtn) {
@@ -717,7 +774,6 @@
     const randomizedTurnOrder = shuffleArray(playerNames);
     const myRandomBoard = generateRandomBoard(state.matrixSize);
 
-    // Generate individual random boards for all players
     const allBoards = {};
     state.players.forEach(p => {
       allBoards[p.username.toLowerCase()] = generateRandomBoard(state.matrixSize);
@@ -735,16 +791,14 @@
       allBoards: allBoards
     };
 
-    // Save game state
     localStorage.setItem('bingo_game_' + state.currentRoom.room_code, JSON.stringify(gamePayload));
 
-    // Broadcast start to other tabs
-    broadcastMessage({
+    broadcastSyncMessage({
       type: 'GAME_STARTED',
+      roomCode: state.currentRoom.room_code,
       data: gamePayload
     });
 
-    // Start on local tab
     startActiveGame({
       ...gamePayload,
       myBoard: myRandomBoard
@@ -757,6 +811,8 @@
 
   // --- START ACTIVE GAME PLAY ---
   function startActiveGame(data) {
+    if (lobbySyncInterval) clearInterval(lobbySyncInterval);
+
     state.currentRoom = data.room;
     state.myBoard = data.myBoard || generateRandomBoard(data.matrixSize || 25);
     state.turnOrder = data.turnOrder || [state.username];
@@ -774,8 +830,10 @@
     initGameBoard();
     updateTurnDisplay();
     updateStandings(data.players || state.players);
+
+    // Switch view to active game board!
     showView('game');
-    showToast(`Game started! Unique random matrix & turn order active.`);
+    showToast(`Match started! Random matrix & turn order active.`);
 
     checkAndTriggerBotTurn();
   }
@@ -783,7 +841,12 @@
   // Socket.io game started event
   if (socket) {
     socket.on('game_started', (data) => {
-      startActiveGame(data);
+      if (lobbySyncInterval) clearInterval(lobbySyncInterval);
+      const myBoard = (data.allBoards && data.allBoards[state.username.toLowerCase()]) || data.myBoard || generateRandomBoard(data.matrixSize || 25);
+      startActiveGame({
+        ...data,
+        myBoard: myBoard
+      });
     });
   }
 
@@ -1000,7 +1063,7 @@
     }
 
     // Broadcast call to other tabs
-    broadcastMessage({
+    broadcastSyncMessage({
       type: 'NUMBER_CALLED',
       roomCode: state.currentRoom ? state.currentRoom.room_code : '',
       number: num,
@@ -1228,7 +1291,6 @@
 
     playVictorySound();
 
-    // Trigger confetti
     if (typeof confetti === 'function') {
       confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
       setTimeout(() => {
@@ -1239,7 +1301,6 @@
 
     if (modalVictory) modalVictory.classList.remove('hidden');
 
-    // Update local stats
     const stats = JSON.parse(localStorage.getItem('bingo_local_stats') || '{}');
     const myStats = stats[state.username] || { games_played: 0, games_won: 0, username: state.username, avatar_color: state.avatarColor };
     myStats.games_played++;
@@ -1288,7 +1349,7 @@
       }
 
       appendChatMessage(state.username, emoji);
-      broadcastMessage({
+      broadcastSyncMessage({
         type: 'CHAT',
         roomCode: state.currentRoom.room_code,
         username: state.username,
@@ -1297,53 +1358,73 @@
     });
   });
 
-  // --- MULTI-TAB BROADCAST ENGINE ---
-  function broadcastMessage(payload) {
+  // --- CROSS-TAB SYNC ENGINE (BroadcastChannel + Storage Event Fallback) ---
+  function broadcastSyncMessage(payload) {
     try {
       if (channel) {
         channel.postMessage(payload);
       }
     } catch (e) {}
+
+    try {
+      localStorage.setItem('bingo_channel_event', JSON.stringify({
+        ...payload,
+        _timestamp: Date.now() + Math.random()
+      }));
+    } catch (e) {}
+  }
+
+  function handleSyncPayload(msg) {
+    if (!msg) return;
+
+    if (msg.type === 'PLAYER_JOINED') {
+      if (state.currentRoom && state.currentRoom.room_code.toUpperCase() === msg.roomCode.toUpperCase()) {
+        const exists = state.players.some(p => p.username.toLowerCase() === msg.player.username.toLowerCase());
+        if (!exists) {
+          state.players.push(msg.player);
+          renderLobby(state.currentRoom, state.players);
+          showToast(`${msg.player.username} joined the lobby!`);
+        }
+      }
+    } else if (msg.type === 'GAME_STARTED') {
+      if (state.currentRoom && state.currentRoom.room_code.toUpperCase() === msg.roomCode.toUpperCase()) {
+        if (lobbySyncInterval) clearInterval(lobbySyncInterval);
+        const myBoard = (msg.data.allBoards && msg.data.allBoards[state.username.toLowerCase()]) || generateRandomBoard(msg.data.matrixSize || 25);
+        startActiveGame({
+          ...msg.data,
+          myBoard: myBoard
+        });
+      }
+    } else if (msg.type === 'NUMBER_CALLED') {
+      if (state.currentRoom && state.currentRoom.room_code.toUpperCase() === msg.roomCode.toUpperCase()) {
+        if (!state.calledNumbers.includes(msg.number)) {
+          executeNumberCall(msg.number, msg.caller);
+        }
+        if (msg.winner) {
+          declareWinner(msg.winner);
+        }
+      }
+    } else if (msg.type === 'CHAT') {
+      if (state.currentRoom && state.currentRoom.room_code.toUpperCase() === msg.roomCode.toUpperCase()) {
+        appendChatMessage(msg.username, msg.message);
+      }
+    }
   }
 
   if (channel) {
     channel.onmessage = (event) => {
-      const msg = event.data;
-      if (!msg) return;
-
-      if (msg.type === 'PLAYER_JOINED') {
-        if (state.currentRoom && state.currentRoom.room_code === msg.roomCode) {
-          const exists = state.players.some(p => p.username.toLowerCase() === msg.player.username.toLowerCase());
-          if (!exists) {
-            state.players.push(msg.player);
-            renderLobby(state.currentRoom, state.players);
-            showToast(`${msg.player.username} joined the lobby!`);
-          }
-        }
-      } else if (msg.type === 'GAME_STARTED') {
-        if (state.currentRoom && state.currentRoom.room_code === msg.data.room.room_code) {
-          const myBoard = (msg.data.allBoards && msg.data.allBoards[state.username.toLowerCase()]) || generateRandomBoard(msg.data.matrixSize || 25);
-          startActiveGame({
-            ...msg.data,
-            myBoard: myBoard
-          });
-        }
-      } else if (msg.type === 'NUMBER_CALLED') {
-        if (state.currentRoom && state.currentRoom.room_code === msg.roomCode) {
-          if (!state.calledNumbers.includes(msg.number)) {
-            executeNumberCall(msg.number, msg.caller);
-          }
-          if (msg.winner) {
-            declareWinner(msg.winner);
-          }
-        }
-      } else if (msg.type === 'CHAT') {
-        if (state.currentRoom && state.currentRoom.room_code === msg.roomCode) {
-          appendChatMessage(msg.username, msg.message);
-        }
-      }
+      handleSyncPayload(event.data);
     };
   }
+
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'bingo_channel_event' && event.newValue) {
+      try {
+        const payload = JSON.parse(event.newValue);
+        handleSyncPayload(payload);
+      } catch (e) {}
+    }
+  });
 
   // --- LEADERBOARD MODAL ---
   if (leaderboardBtn) {
@@ -1353,7 +1434,6 @@
 
       let leaders = [];
 
-      // Try server first
       if (state.isOnline) {
         try {
           const resp = await fetch('/api/leaderboard');
@@ -1364,7 +1444,6 @@
         } catch (e) {}
       }
 
-      // Fallback to local stored stats
       if (!leaders || leaders.length === 0) {
         const stats = JSON.parse(localStorage.getItem('bingo_local_stats') || '{}');
         leaders = Object.values(stats).sort((a, b) => (b.games_won || 0) - (a.games_won || 0));
