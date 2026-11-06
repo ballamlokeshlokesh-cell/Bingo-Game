@@ -8,18 +8,25 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Load Socket.IO from CDN and fallback to local server -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="/socket.io/socket.io.js"><\/script>');
+    }
+  </script>
+  <!-- Canvas Confetti with fallback -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
 <body>
-  <!-- Background glow accents -->
+  <!-- Ambient background glow -->
   <div class="bg-glow bg-glow-1"></div>
   <div class="bg-glow bg-glow-2"></div>
 
-  <!-- Header / Navigation -->
+  <!-- App Header -->
   <header class="app-header">
     <div class="header-container">
-      <div class="brand" id="brand-logo">
+      <div class="brand" id="brand-logo" title="Back to Game Hub">
         <div class="brand-icon">🎯</div>
         <div class="brand-text">
           <h1>BINGO <span>LIVE</span></h1>
@@ -28,19 +35,25 @@
       </div>
 
       <div class="header-actions">
-        <button id="sound-toggle-btn" class="icon-btn" title="Toggle Sound">
+        <!-- Live Connection Status Pill -->
+        <div class="status-pill" id="network-status-pill" title="Network Engine Status">
+          <span class="status-dot online"></span>
+          <span class="status-text" id="network-status-text">Ready</span>
+        </div>
+
+        <button id="sound-toggle-btn" class="icon-btn" type="button" title="Toggle Sound">
           <span id="sound-icon">🔊</span>
         </button>
-        <button id="leaderboard-btn" class="pill-btn secondary-pill" title="Leaderboard">
+        <button id="leaderboard-btn" class="pill-btn secondary-pill" type="button" title="Leaderboard">
           🏆 Leaderboard
         </button>
-        <button id="rules-btn" class="pill-btn secondary-pill" title="Rules">
+        <button id="rules-btn" class="pill-btn secondary-pill" type="button" title="Rules">
           ❓ How to Play
         </button>
         <div id="user-pill" class="user-pill hidden">
           <div class="user-avatar" id="header-avatar"></div>
           <span class="user-name" id="header-username">Player</span>
-          <button id="change-user-btn" class="icon-subtle-btn" title="Edit Profile">✏️</button>
+          <button id="change-user-btn" class="icon-subtle-btn" type="button" title="Edit Profile">✏️</button>
         </div>
       </div>
     </div>
@@ -77,7 +90,7 @@
             </div>
           </div>
 
-          <button type="submit" class="cta-btn primary-cta">
+          <button type="submit" class="cta-btn primary-cta" id="btn-onboarding-continue">
             <span>Continue to Game Hub</span>
             <span class="btn-arrow">→</span>
           </button>
@@ -86,7 +99,7 @@
         <div class="feature-badges">
           <div class="feat"><span class="feat-icon">🎲</span> Random Matrix Every Round</div>
           <div class="feat"><span class="feat-icon">🔄</span> Auto Cross-Out on All Boards</div>
-          <div class="feat"><span class="feat-icon">💾</span> SQLite Database Connected</div>
+          <div class="feat"><span class="feat-icon">⚡</span> Real-Time Multiplayer Sync</div>
         </div>
       </div>
     </section>
@@ -110,23 +123,23 @@
               <div class="matrix-select-group">
                 <label class="group-label">Choose Square Matrix Size</label>
                 <div class="matrix-options">
-                  <label class="matrix-card-option selected">
-                    <input type="radio" name="matrixSize" value="25" checked />
+                  <div class="matrix-card-option selected" data-size="25">
+                    <input type="radio" name="matrixSize" id="matrix-size-25" value="25" checked />
                     <div class="opt-content">
                       <div class="opt-badge">5 × 5 Grid</div>
                       <div class="opt-title">25 Numbers</div>
                       <div class="opt-desc">Classic B-I-N-G-O (1 to 25). Shuffled randomly for each player.</div>
                     </div>
-                  </label>
+                  </div>
 
-                  <label class="matrix-card-option">
-                    <input type="radio" name="matrixSize" value="100" />
+                  <div class="matrix-card-option" data-size="100">
+                    <input type="radio" name="matrixSize" id="matrix-size-100" value="100" />
                     <div class="opt-content">
                       <div class="opt-badge">10 × 10 Grid</div>
                       <div class="opt-title">100 Numbers</div>
                       <div class="opt-desc">Large square matrix (1 to 100). Mega intense team challenge.</div>
                     </div>
-                  </label>
+                  </div>
                 </div>
               </div>
 
@@ -158,7 +171,7 @@
                 <label for="input-team-code">Enter Team Code</label>
                 <div class="input-wrapper code-input-wrapper">
                   <span class="input-icon">🔑</span>
-                  <input type="text" id="input-team-code" placeholder="TEAM-XXXX" maxlength="12" required autocomplete="off" />
+                  <input type="text" id="input-team-code" placeholder="TEAM-XXXX" maxlength="14" required autocomplete="off" />
                 </div>
               </div>
 
@@ -188,10 +201,10 @@
             <span class="code-label">TEAM CODE</span>
             <div class="code-value-row">
               <h2 id="lobby-team-code">TEAM-XXXX</h2>
-              <button id="copy-code-btn" class="pill-btn copy-btn" title="Copy Team Code">
+              <button id="copy-code-btn" type="button" class="pill-btn copy-btn" title="Copy Team Code">
                 📋 Copy Code
               </button>
-              <button id="copy-link-btn" class="pill-btn copy-btn" title="Copy Invite Link">
+              <button id="copy-link-btn" type="button" class="pill-btn copy-btn" title="Copy Invite Link">
                 🔗 Copy Link
               </button>
             </div>
@@ -218,7 +231,11 @@
           <div class="lobby-players-panel">
             <div class="panel-header">
               <h3>👥 Joined Players (<span id="player-count">0</span>)</h3>
-              <span class="pulse-indicator">● Live Sync</span>
+              <div class="panel-header-actions">
+                <button id="btn-add-bot" type="button" class="pill-btn subtle-pill" title="Add a practice player for solo testing">
+                  + Add AI Player
+                </button>
+              </div>
             </div>
 
             <div class="players-list" id="players-list">
@@ -226,14 +243,14 @@
             </div>
 
             <div class="host-controls" id="host-controls">
-              <button id="start-game-btn" class="cta-btn start-game-btn w-full">
+              <button id="start-game-btn" type="button" class="cta-btn start-game-btn w-full">
                 <span>🎮 Start Game & Roll Turn Order</span>
                 <span class="btn-arrow">→</span>
               </button>
               <p class="host-hint">Starting will generate unique random matrix boards for all players and randomly set the turn order!</p>
             </div>
 
-            <div class="waiting-hint" id="non-host-hint">
+            <div class="waiting-hint hidden" id="non-host-hint">
               <div class="loading-spinner"></div>
               <span>Waiting for Host (<b id="lobby-host-name-2">Host</b>) to start the match...</span>
             </div>
@@ -255,7 +272,7 @@
         </div>
 
         <div class="lobby-footer">
-          <button id="leave-lobby-btn" class="pill-btn danger-pill">← Leave Team Room</button>
+          <button id="leave-lobby-btn" type="button" class="pill-btn danger-pill">← Leave Team Room</button>
         </div>
       </div>
     </section>
@@ -295,7 +312,7 @@
           </div>
 
           <div class="game-top-right">
-            <button id="leave-game-btn" class="pill-btn subtle-pill">Exit Game</button>
+            <button id="leave-game-btn" type="button" class="pill-btn subtle-pill">Exit Game</button>
           </div>
         </div>
 
@@ -303,7 +320,7 @@
         <div class="turn-order-banner" id="turn-order-banner">
           <div class="turn-order-header">
             <span class="order-icon">🎲</span>
-            <span class="order-title">Randomized Turn Order:</span>
+            <span class="order-title">Turn Order:</span>
           </div>
           <div class="turn-order-chips" id="turn-order-chips">
             <!-- Rendered by JS -->
@@ -385,11 +402,11 @@
             <!-- Quick In-Game Reactions -->
             <div class="side-card reactions-card">
               <div class="reactions-row">
-                <button class="rx-btn" data-emoji="🎉">🎉</button>
-                <button class="rx-btn" data-emoji="🔥">🔥</button>
-                <button class="rx-btn" data-emoji="😱">😱</button>
-                <button class="rx-btn" data-emoji="🍀">🍀</button>
-                <button class="rx-btn" data-emoji="⚡">⚡</button>
+                <button class="rx-btn" type="button" data-emoji="🎉">🎉</button>
+                <button class="rx-btn" type="button" data-emoji="🔥">🔥</button>
+                <button class="rx-btn" type="button" data-emoji="😱">😱</button>
+                <button class="rx-btn" type="button" data-emoji="🍀">🍀</button>
+                <button class="rx-btn" type="button" data-emoji="⚡">⚡</button>
               </div>
               <div class="game-toast-container" id="game-toast-feed"></div>
             </div>
@@ -416,16 +433,16 @@
           <span class="vic-stat-val" id="vic-winning-lines">5</span>
         </div>
         <div class="vic-stat">
-          <span class="vic-stat-label">Database Status</span>
-          <span class="vic-stat-val status-saved">✓ Saved to SQLite</span>
+          <span class="vic-stat-label">Match Status</span>
+          <span class="vic-stat-val status-saved">✓ Completed</span>
         </div>
       </div>
 
       <div class="victory-actions">
-        <button id="btn-rematch" class="cta-btn primary-cta">
+        <button id="btn-rematch" type="button" class="cta-btn primary-cta">
           <span>🔄 Play Again (New Random Boards)</span>
         </button>
-        <button id="btn-back-hub" class="pill-btn secondary-pill">
+        <button id="btn-back-hub" type="button" class="pill-btn secondary-pill">
           Return to Game Hub
         </button>
       </div>
@@ -436,8 +453,8 @@
   <div id="modal-leaderboard" class="modal-overlay hidden">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>🏆 Hall of Fame (SQLite Leaderboard)</h3>
-        <button class="close-modal-btn" data-modal="modal-leaderboard">✕</button>
+        <h3>🏆 Hall of Fame (Leaderboard)</h3>
+        <button class="close-modal-btn" type="button" data-modal="modal-leaderboard">✕</button>
       </div>
       <div class="modal-body">
         <div class="leaderboard-table-wrapper">
@@ -452,7 +469,7 @@
               </tr>
             </thead>
             <tbody id="leaderboard-tbody">
-              <tr><td colspan="5" style="text-align:center;">Loading SQLite records...</td></tr>
+              <tr><td colspan="5" style="text-align:center;">Loading records...</td></tr>
             </tbody>
           </table>
         </div>
@@ -465,7 +482,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3>❓ How to Play Multiplayer Bingo</h3>
-        <button class="close-modal-btn" data-modal="modal-rules">✕</button>
+        <button class="close-modal-btn" type="button" data-modal="modal-rules">✕</button>
       </div>
       <div class="modal-body rules-body">
         <div class="rule-card">
@@ -488,7 +505,7 @@
           <div class="rule-num">3</div>
           <div class="rule-info">
             <h4>Random Turn Order & Automatic Cross-Out</h4>
-            <p>The server randomly determines player turn order. When a player calls a number on their turn, that number <b>automatically cancels / strikes out on all players' boards in real time</b>!</p>
+            <p>The system randomly determines player turn order. When a player calls a number on their turn, that number <b>automatically cancels / strikes out on all players' boards in real time</b>!</p>
           </div>
         </div>
 

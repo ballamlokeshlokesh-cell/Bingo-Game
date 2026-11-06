@@ -3,17 +3,499 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="0; url=public/index.html">
-  <title>Multiplayer Bingo Game</title>
+  <title>Multiplayer Bingo | Real-Time Team Game</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="public/style.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script>
-    window.location.replace("public/index.html" + window.location.search);
+    if (typeof io === 'undefined') {
+      document.write('<script src="/socket.io/socket.io.js"><\/script>');
+    }
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
-<body style="background: #0a0e17; color: #f8fafc; font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0;">
-  <div style="text-align: center;">
-    <h2>🎯 Loading Multiplayer Bingo...</h2>
-    <p style="color: #94a3b8;">Redirecting to the game interface...</p>
-    <p><a href="public/index.html" style="color: #6366f1;">Click here if you are not redirected automatically.</a></p>
+<body>
+  <!-- Ambient background glow -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand" id="brand-logo" title="Back to Game Hub">
+        <div class="brand-icon">🎯</div>
+        <div class="brand-text">
+          <h1>BINGO <span>LIVE</span></h1>
+          <p class="brand-sub">Multiplayer Team Battle</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="status-pill" id="network-status-pill" title="Network Engine Status">
+          <span class="status-dot online"></span>
+          <span class="status-text" id="network-status-text">Ready</span>
+        </div>
+
+        <button id="sound-toggle-btn" class="icon-btn" type="button" title="Toggle Sound">
+          <span id="sound-icon">🔊</span>
+        </button>
+        <button id="leaderboard-btn" class="pill-btn secondary-pill" type="button" title="Leaderboard">
+          🏆 Leaderboard
+        </button>
+        <button id="rules-btn" class="pill-btn secondary-pill" type="button" title="Rules">
+          ❓ How to Play
+        </button>
+        <div id="user-pill" class="user-pill hidden">
+          <div class="user-avatar" id="header-avatar"></div>
+          <span class="user-name" id="header-username">Player</span>
+          <button id="change-user-btn" class="icon-subtle-btn" type="button" title="Edit Profile">✏️</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <!-- VIEW 1: USER ONBOARDING -->
+    <section id="view-onboarding" class="view-card">
+      <div class="card-inner">
+        <div class="welcome-header">
+          <div class="welcome-badge">⚡ Instant Play • No Login Required</div>
+          <h2>Join the Bingo Arena</h2>
+          <p>Enter your player nickname to create or join multiplayer games.</p>
+        </div>
+
+        <form id="onboarding-form" class="form-stack">
+          <div class="form-group">
+            <label for="input-username">Your Nickname</label>
+            <div class="input-wrapper">
+              <span class="input-icon">👤</span>
+              <input type="text" id="input-username" placeholder="e.g. Alex, CyberPro, QueenBee" maxlength="18" required autocomplete="off" autofocus />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Pick Your Avatar Accent</label>
+            <div class="avatar-palette" id="avatar-palette">
+              <button type="button" class="color-dot active" data-color="#6366f1" style="background: #6366f1;"></button>
+              <button type="button" class="color-dot" data-color="#ec4899" style="background: #ec4899;"></button>
+              <button type="button" class="color-dot" data-color="#10b981" style="background: #10b981;"></button>
+              <button type="button" class="color-dot" data-color="#f59e0b" style="background: #f59e0b;"></button>
+              <button type="button" class="color-dot" data-color="#06b6d4" style="background: #06b6d4;"></button>
+              <button type="button" class="color-dot" data-color="#8b5cf6" style="background: #8b5cf6;"></button>
+            </div>
+          </div>
+
+          <button type="submit" class="cta-btn primary-cta" id="btn-onboarding-continue">
+            <span>Continue to Game Hub</span>
+            <span class="btn-arrow">→</span>
+          </button>
+        </form>
+
+        <div class="feature-badges">
+          <div class="feat"><span class="feat-icon">🎲</span> Random Matrix Every Round</div>
+          <div class="feat"><span class="feat-icon">🔄</span> Auto Cross-Out on All Boards</div>
+          <div class="feat"><span class="feat-icon">⚡</span> Real-Time Multiplayer Sync</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: GAME HUB -->
+    <section id="view-hub" class="view-card hidden">
+      <div class="hub-container">
+        <div class="hub-hero">
+          <h2>Welcome, <span id="hub-greeting-name" class="highlight-text">Player</span>!</h2>
+          <p>Create a private team code or enter a friend's team code to play together in real-time.</p>
+        </div>
+
+        <div class="hub-grid">
+          <!-- CARD A: CREATE TEAM CODE -->
+          <div class="action-card create-card">
+            <div class="card-tag">HOST A GAME</div>
+            <h3>Create a Team Room</h3>
+            <p>Configure your square matrix size and generate a shareable team code.</p>
+
+            <form id="create-room-form">
+              <div class="matrix-select-group">
+                <label class="group-label">Choose Square Matrix Size</label>
+                <div class="matrix-options">
+                  <div class="matrix-card-option selected" data-size="25">
+                    <input type="radio" name="matrixSize" id="matrix-size-25" value="25" checked />
+                    <div class="opt-content">
+                      <div class="opt-badge">5 × 5 Grid</div>
+                      <div class="opt-title">25 Numbers</div>
+                      <div class="opt-desc">Classic B-I-N-G-O (1 to 25). Shuffled randomly for each player.</div>
+                    </div>
+                  </div>
+
+                  <div class="matrix-card-option" data-size="100">
+                    <input type="radio" name="matrixSize" id="matrix-size-100" value="100" />
+                    <div class="opt-content">
+                      <div class="opt-badge">10 × 10 Grid</div>
+                      <div class="opt-title">100 Numbers</div>
+                      <div class="opt-desc">Large square matrix (1 to 100). Mega intense team challenge.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="win-lines-group">
+                <label for="select-win-lines">Lines Required to Win</label>
+                <select id="select-win-lines" class="styled-select">
+                  <option value="5" selected>5 Completed Lines (Classic B-I-N-G-O)</option>
+                  <option value="3">3 Completed Lines (Quick Round)</option>
+                  <option value="4">4 Completed Lines</option>
+                  <option value="1">1 Completed Line (Blitz First Line)</option>
+                </select>
+              </div>
+
+              <button type="submit" class="cta-btn primary-cta w-full" id="btn-generate-code">
+                <span>🎲 Generate Team Code</span>
+                <span class="btn-arrow">→</span>
+              </button>
+            </form>
+          </div>
+
+          <!-- CARD B: JOIN TEAM CODE -->
+          <div class="action-card join-card">
+            <div class="card-tag">JOIN FRIENDS</div>
+            <h3>Enter Team Code</h3>
+            <p>Have a team code from another player? Enter it here to join their game room.</p>
+
+            <form id="join-room-form" class="join-form">
+              <div class="form-group">
+                <label for="input-team-code">Enter Team Code</label>
+                <div class="input-wrapper code-input-wrapper">
+                  <span class="input-icon">🔑</span>
+                  <input type="text" id="input-team-code" placeholder="TEAM-XXXX" maxlength="14" required autocomplete="off" />
+                </div>
+              </div>
+
+              <button type="submit" class="cta-btn secondary-cta w-full" id="btn-join-team">
+                <span>🚀 Join Team Game</span>
+                <span class="btn-arrow">→</span>
+              </button>
+            </form>
+
+            <div class="join-info-box">
+              <div class="info-icon">💡</div>
+              <div class="info-text">
+                Players in the same team get unique randomized matrices. When any player calls a number on their turn, it automatically cancels out across everyone's game!
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: TEAM LOBBY -->
+    <section id="view-lobby" class="view-card hidden">
+      <div class="lobby-container">
+        <div class="lobby-header-bar">
+          <div class="room-code-display">
+            <span class="code-label">TEAM CODE</span>
+            <div class="code-value-row">
+              <h2 id="lobby-team-code">TEAM-XXXX</h2>
+              <button id="copy-code-btn" type="button" class="pill-btn copy-btn" title="Copy Team Code">
+                📋 Copy Code
+              </button>
+              <button id="copy-link-btn" type="button" class="pill-btn copy-btn" title="Copy Invite Link">
+                🔗 Copy Link
+              </button>
+            </div>
+          </div>
+
+          <div class="room-meta-badges">
+            <div class="meta-badge">
+              <span class="meta-label">Matrix Size</span>
+              <span class="meta-val" id="lobby-matrix-size">25 Numbers (5x5)</span>
+            </div>
+            <div class="meta-badge">
+              <span class="meta-label">Goal</span>
+              <span class="meta-val" id="lobby-win-goal">5 Lines to Win</span>
+            </div>
+            <div class="meta-badge">
+              <span class="meta-label">Host</span>
+              <span class="meta-val" id="lobby-host-name">Host</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="lobby-main-split">
+          <div class="lobby-players-panel">
+            <div class="panel-header">
+              <h3>👥 Joined Players (<span id="player-count">0</span>)</h3>
+              <div class="panel-header-actions">
+                <button id="btn-add-bot" type="button" class="pill-btn subtle-pill" title="Add a practice player for solo testing">
+                  + Add AI Player
+                </button>
+              </div>
+            </div>
+
+            <div class="players-list" id="players-list"></div>
+
+            <div class="host-controls" id="host-controls">
+              <button id="start-game-btn" type="button" class="cta-btn start-game-btn w-full">
+                <span>🎮 Start Game & Roll Turn Order</span>
+                <span class="btn-arrow">→</span>
+              </button>
+              <p class="host-hint">Starting will generate unique random matrix boards for all players and randomly set the turn order!</p>
+            </div>
+
+            <div class="waiting-hint hidden" id="non-host-hint">
+              <div class="loading-spinner"></div>
+              <span>Waiting for Host (<b id="lobby-host-name-2">Host</b>) to start the match...</span>
+            </div>
+          </div>
+
+          <div class="lobby-chat-panel">
+            <div class="panel-header">
+              <h3>💬 Team Activity & Chat</h3>
+            </div>
+            <div class="chat-messages" id="lobby-chat-messages">
+              <div class="chat-item system-msg">Welcome to the team room! Share your team code with friends.</div>
+            </div>
+            <form id="lobby-chat-form" class="chat-input-row">
+              <input type="text" id="lobby-chat-input" placeholder="Type a message..." maxlength="100" autocomplete="off" />
+              <button type="submit" class="chat-send-btn">Send</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="lobby-footer">
+          <button id="leave-lobby-btn" type="button" class="pill-btn danger-pill">← Leave Team Room</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 4: ACTIVE GAME PLAY -->
+    <section id="view-game" class="view-card hidden">
+      <div class="game-container">
+        <div class="game-top-bar">
+          <div class="game-top-left">
+            <div class="game-team-pill">
+              <span class="pill-dim">Team:</span>
+              <b id="game-room-code">TEAM-XXXX</b>
+            </div>
+            <div class="game-dim-pill">
+              <span id="game-dim-text">5×5 Matrix</span>
+            </div>
+          </div>
+
+          <div class="bingo-indicator-wrapper" id="bingo-header-5x5">
+            <div class="bingo-letters">
+              <div class="b-letter" data-letter="B">B</div>
+              <div class="b-letter" data-letter="I">I</div>
+              <div class="b-letter" data-letter="N">N</div>
+              <div class="b-letter" data-letter="G">G</div>
+              <div class="b-letter" data-letter="O">O</div>
+            </div>
+            <div class="bingo-progress-text"><span id="my-completed-lines-count">0</span> / 5 Lines Completed</div>
+          </div>
+
+          <div class="bingo-indicator-wrapper hidden" id="bingo-header-100">
+            <div class="progress-bar-container">
+              <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div class="bingo-progress-text"><span id="my-completed-lines-count-100">0</span> / <span id="target-lines-100">5</span> Lines Completed</div>
+          </div>
+
+          <div class="game-top-right">
+            <button id="leave-game-btn" type="button" class="pill-btn subtle-pill">Exit Game</button>
+          </div>
+        </div>
+
+        <div class="turn-order-banner" id="turn-order-banner">
+          <div class="turn-order-header">
+            <span class="order-icon">🎲</span>
+            <span class="order-title">Turn Order:</span>
+          </div>
+          <div class="turn-order-chips" id="turn-order-chips"></div>
+        </div>
+
+        <div class="current-turn-alert" id="current-turn-alert">
+          <div class="turn-status-content">
+            <div class="turn-avatar-badge" id="turn-avatar-badge">👤</div>
+            <div class="turn-text-group">
+              <h3 id="turn-status-title">It's Your Turn!</h3>
+              <p id="turn-status-sub">Click an unmarked number on your board or type it below to call it.</p>
+            </div>
+          </div>
+
+          <div class="turn-call-box" id="turn-call-box">
+            <input type="number" id="input-call-number" placeholder="Enter #" min="1" max="100" />
+            <button type="button" id="btn-call-entered-number" class="call-btn">Call Number</button>
+          </div>
+        </div>
+
+        <div class="game-board-layout">
+          <div class="board-column">
+            <div class="board-card">
+              <div class="board-card-header">
+                <div class="board-title-group">
+                  <h4>Your Board Matrix</h4>
+                  <span class="random-badge">🎲 Shuffled Randomly For You</span>
+                </div>
+                <div class="board-legend">
+                  <span class="legend-item"><span class="legend-dot called-dot"></span> Called / Cancelled</span>
+                  <span class="legend-item"><span class="legend-dot uncalled-dot"></span> Available</span>
+                </div>
+              </div>
+
+              <div class="matrix-grid-wrapper">
+                <div id="bingo-grid" class="bingo-grid grid-5x5"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="side-column">
+            <div class="spotlight-card">
+              <div class="spotlight-label">LATEST NUMBER CALLED</div>
+              <div class="spotlight-number" id="spotlight-number">—</div>
+              <div class="spotlight-caller" id="spotlight-caller">Waiting for game start...</div>
+            </div>
+
+            <div class="side-card called-history-card">
+              <div class="side-card-header">
+                <h4>Crossed Numbers (<span id="called-count">0</span>)</h4>
+              </div>
+              <div class="called-chips-container" id="called-chips-list">
+                <div class="empty-chips">No numbers called yet.</div>
+              </div>
+            </div>
+
+            <div class="side-card competitors-card">
+              <div class="side-card-header">
+                <h4>Live Team Standings</h4>
+                <span class="live-tag">REALTIME</span>
+              </div>
+              <div class="competitors-list" id="competitors-list"></div>
+            </div>
+
+            <div class="side-card reactions-card">
+              <div class="reactions-row">
+                <button class="rx-btn" type="button" data-emoji="🎉">🎉</button>
+                <button class="rx-btn" type="button" data-emoji="🔥">🔥</button>
+                <button class="rx-btn" type="button" data-emoji="😱">😱</button>
+                <button class="rx-btn" type="button" data-emoji="🍀">🍀</button>
+                <button class="rx-btn" type="button" data-emoji="⚡">⚡</button>
+              </div>
+              <div class="game-toast-container" id="game-toast-feed"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL: VICTORY -->
+  <div id="modal-victory" class="modal-overlay hidden">
+    <div class="modal-content victory-content">
+      <div class="trophy-bounce">🏆</div>
+      <h2 class="victory-title">BINGO!</h2>
+      <p class="victory-subtitle"><b id="winner-name-display" class="highlight-text">Player</b> has completed the required lines and won the game!</p>
+
+      <div class="victory-stats-card">
+        <div class="vic-stat">
+          <span class="vic-stat-label">Total Numbers Called</span>
+          <span class="vic-stat-val" id="vic-total-calls">0</span>
+        </div>
+        <div class="vic-stat">
+          <span class="vic-stat-label">Lines Completed</span>
+          <span class="vic-stat-val" id="vic-winning-lines">5</span>
+        </div>
+        <div class="vic-stat">
+          <span class="vic-stat-label">Match Status</span>
+          <span class="vic-stat-val status-saved">✓ Completed</span>
+        </div>
+      </div>
+
+      <div class="victory-actions">
+        <button id="btn-rematch" type="button" class="cta-btn primary-cta">
+          <span>🔄 Play Again (New Random Boards)</span>
+        </button>
+        <button id="btn-back-hub" type="button" class="pill-btn secondary-pill">
+          Return to Game Hub
+        </button>
+      </div>
+    </div>
   </div>
+
+  <!-- MODAL: LEADERBOARD -->
+  <div id="modal-leaderboard" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>🏆 Hall of Fame (Leaderboard)</h3>
+        <button class="close-modal-btn" type="button" data-modal="modal-leaderboard">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="leaderboard-table-wrapper">
+          <table class="styled-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Player</th>
+                <th>Games Won</th>
+                <th>Games Played</th>
+                <th>Win Rate</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-tbody">
+              <tr><td colspan="5" style="text-align:center;">Loading records...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: HOW TO PLAY -->
+  <div id="modal-rules" class="modal-overlay hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>❓ How to Play Multiplayer Bingo</h3>
+        <button class="close-modal-btn" type="button" data-modal="modal-rules">✕</button>
+      </div>
+      <div class="modal-body rules-body">
+        <div class="rule-card">
+          <div class="rule-num">1</div>
+          <div class="rule-info">
+            <h4>Create or Join with Team Code</h4>
+            <p>One player chooses the square matrix (25 numbers or 100 numbers) and generates a team code. Friends enter the code to join.</p>
+          </div>
+        </div>
+
+        <div class="rule-card">
+          <div class="rule-num">2</div>
+          <div class="rule-info">
+            <h4>Unique Random Matrix for Everyone</h4>
+            <p>When the match starts, each player receives a uniquely shuffled arrangement of numbers on their board.</p>
+          </div>
+        </div>
+
+        <div class="rule-card">
+          <div class="rule-num">3</div>
+          <div class="rule-info">
+            <h4>Random Turn Order & Automatic Cross-Out</h4>
+            <p>The system randomly determines player turn order. When a player calls a number on their turn, that number <b>automatically cancels / strikes out on all players' boards in real time</b>!</p>
+          </div>
+        </div>
+
+        <div class="rule-card">
+          <div class="rule-num">4</div>
+          <div class="rule-info">
+            <h4>Complete 5 Lines for B-I-N-G-O</h4>
+            <p>Complete horizontal, vertical, or diagonal lines. In 5x5, each line lights up a letter in B-I-N-G-O. First player to achieve all required lines wins!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="app-toast" class="toast-box"></div>
+
+  <script src="public/game.js"></script>
 </body>
 </html>
