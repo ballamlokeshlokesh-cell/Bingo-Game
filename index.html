@@ -2,157 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0f172a">
-  <title>Bingo Game</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; padding: 24px 16px; background: #0f172a; color: #f8fafc; }
-    main { width: min(100%, 850px); margin: 0 auto; }
-    h1 { margin: 0 0 8px; text-align: center; color: #a5b4fc; }
-    .intro { margin: 0 0 24px; text-align: center; color: #cbd5e1; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .7fr); gap: 20px; align-items: start; }
-    .card { padding: 20px; border: 1px solid #334155; border-radius: 16px; background: #1e293b; box-shadow: 0 12px 30px #02061755; }
-    .board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-    .heading, .cell { display: grid; place-items: center; aspect-ratio: 1; border-radius: 10px; font-weight: 800; }
-    .heading { color: #a5b4fc; font-size: clamp(1.1rem, 4vw, 1.8rem); }
-    .cell { border: 1px solid #475569; background: #334155; color: #f8fafc; font-size: clamp(1rem, 4vw, 1.5rem); }
-    .cell.marked { background: #4f46e5; border-color: #a5b4fc; }
-    .cell.free { font-size: .75rem; background: #0f766e; }
-    .controls { display: grid; gap: 12px; }
-    button { border: 0; border-radius: 9px; padding: 12px 16px; color: white; font: inherit; font-weight: 700; cursor: pointer; }
-    button:focus-visible { outline: 3px solid #fbbf24; outline-offset: 3px; }
-    button:disabled { cursor: not-allowed; opacity: .55; }
-    #draw { background: #4f46e5; }
-    #new-game { background: #475569; }
-    .current { margin: 4px 0 0; text-align: center; color: #cbd5e1; }
-    #current-call { display: block; min-height: 2.5rem; color: #fbbf24; font-size: 2rem; font-weight: 900; }
-    #message { min-height: 1.5em; margin: 4px 0 0; text-align: center; color: #86efac; font-weight: 700; }
-    h2 { margin: 0 0 12px; font-size: 1.15rem; }
-    #called-list { display: flex; flex-wrap: wrap; gap: 7px; min-height: 36px; }
-    .called { padding: 5px 8px; border-radius: 6px; background: #334155; font-size: .9rem; }
-    .help { margin: 18px 0 0; color: #cbd5e1; font-size: .9rem; line-height: 1.5; }
-    @media (max-width: 620px) { .layout { grid-template-columns: 1fr; } .card { padding: 16px; } }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>🏆 Bingo</h1>
-    <p class="intro">Play a quick game of classic Bingo.</p>
-    <div class="layout">
-      <section class="card" aria-label="Bingo board">
-        <div class="board" id="board" aria-live="polite"></div>
-      </section>
-      <aside class="card controls">
-        <button id="draw" type="button">Call next number</button>
-        <button id="new-game" type="button">New game</button>
-        <p class="current">Current call <span id="current-call">—</span></p>
-        <p id="message" role="status" aria-live="polite"></p>
-        <section>
-          <h2>Called numbers</h2>
-          <div id="called-list" aria-label="Called numbers"></div>
-        </section>
-        <p class="help">Numbers called so far are marked on your board automatically. Get five in a row horizontally, vertically, or diagonally to win.</p>
-      </aside>
-    </div>
-  </main>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="0; url=public/index.html">
+  <title>Multiplayer Bingo Game</title>
   <script>
-    (() => {
-      const boardElement = document.getElementById('board');
-      const drawButton = document.getElementById('draw');
-      const calledList = document.getElementById('called-list');
-      const currentCall = document.getElementById('current-call');
-      const message = document.getElementById('message');
-      const letters = ['B', 'I', 'N', 'G', 'O'];
-      let board = [];
-      let remaining = [];
-      let called = [];
-
-      function shuffled(values) {
-        const result = [...values];
-        for (let i = result.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [result[i], result[j]] = [result[j], result[i]];
-        }
-        return result;
-      }
-
-      function hasBingo() {
-        const lines = [];
-        for (let row = 0; row < 5; row++) lines.push(Array.from({ length: 5 }, (_, col) => row * 5 + col));
-        for (let col = 0; col < 5; col++) lines.push(Array.from({ length: 5 }, (_, row) => row * 5 + col));
-        lines.push([0, 6, 12, 18, 24], [4, 8, 12, 16, 20]);
-        return lines.some(line => line.every(index => {
-          const cell = board[index];
-          return cell.free || called.includes(cell.value);
-        }));
-      }
-
-      function render() {
-        boardElement.replaceChildren();
-        letters.forEach(letter => {
-          const heading = document.createElement('div');
-          heading.className = 'heading';
-          heading.textContent = letter;
-          boardElement.append(heading);
-        });
-
-        board.forEach(cell => {
-          const tile = document.createElement('div');
-          const isMarked = cell.free || called.includes(cell.value);
-          tile.className = `cell${cell.free ? ' free marked' : ''}${isMarked ? ' marked' : ''}`;
-          tile.textContent = cell.free ? 'FREE' : cell.display;
-          if (isMarked) tile.setAttribute('aria-label', `${cell.display}, marked`);
-          boardElement.append(tile);
-        });
-
-        calledList.replaceChildren();
-        called.forEach(value => {
-          const chip = document.createElement('span');
-          chip.className = 'called';
-          chip.textContent = value;
-          calledList.append(chip);
-        });
-
-        drawButton.disabled = remaining.length === 0 || hasBingo();
-      }
-
-      function newGame() {
-        board = [];
-        for (let col = 0; col < 5; col++) {
-          const start = col * 15 + 1;
-          shuffled(Array.from({ length: 15 }, (_, i) => start + i))
-            .slice(0, 5)
-            .forEach((value, row) => {
-              board[row * 5 + col] = { value: `${letters[col]}${value}`, display: value, free: false };
-            });
-        }
-
-        board[12] = { value: 'FREE', display: 'FREE', free: true };
-        remaining = shuffled(Array.from({ length: 75 }, (_, i) => {
-          const number = i + 1;
-          return `${letters[Math.floor((number - 1) / 15)]}${number}`;
-        }));
-        called = [];
-        currentCall.textContent = '—';
-        message.textContent = '';
-        render();
-      }
-
-      drawButton.addEventListener('click', () => {
-        if (!remaining.length || hasBingo()) return;
-        const value = remaining.pop();
-        called.push(value);
-        currentCall.textContent = value;
-        if (hasBingo()) message.textContent = 'Bingo! You won! Start a new game to play again.';
-        else if (!remaining.length) message.textContent = 'No numbers left. Start a new game to try again.';
-        render();
-      });
-
-      document.getElementById('new-game').addEventListener('click', newGame);
-      newGame();
-    })();
+    window.location.replace("public/index.html" + window.location.search);
   </script>
+</head>
+<body style="background: #0a0e17; color: #f8fafc; font-family: system-ui, sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0;">
+  <div style="text-align: center;">
+    <h2>🎯 Loading Multiplayer Bingo...</h2>
+    <p style="color: #94a3b8;">Redirecting to the game interface...</p>
+    <p><a href="public/index.html" style="color: #6366f1;">Click here if you are not redirected automatically.</a></p>
+  </div>
 </body>
 </html>
