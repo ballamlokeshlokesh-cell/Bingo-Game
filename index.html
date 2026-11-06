@@ -306,6 +306,15 @@
           </div>
         </div>
 
+        <!-- Celebratory Claim BINGO Banner (Unlocks When Lines Complete) -->
+        <div id="bingo-claim-banner" class="bingo-claim-banner hidden">
+          <div class="claim-banner-content">
+            <span class="claim-banner-icon">🎉</span>
+            <span class="claim-banner-text"><b>BINGO ACHIEVED!</b> You reached the required winning lines!</span>
+            <button type="button" id="btn-claim-bingo" class="pill-btn claim-action-btn">🏆 View Victory Screen</button>
+          </div>
+        </div>
+
         <div class="turn-order-banner" id="turn-order-banner">
           <div class="turn-order-header">
             <span class="order-icon">🎲</span>
@@ -389,12 +398,12 @@
     </section>
   </main>
 
-  <!-- MODAL: VICTORY -->
+  <!-- MODAL: VICTORY / GAME OVER -->
   <div id="modal-victory" class="modal-overlay hidden">
     <div class="modal-content victory-content">
       <div class="trophy-bounce">🏆</div>
       <h2 class="victory-title">BINGO!</h2>
-      <p class="victory-subtitle"><b id="winner-name-display" class="highlight-text">Player</b> has completed the required lines and won the game!</p>
+      <p class="victory-subtitle" id="victory-subtitle-text"><b id="winner-name-display" class="highlight-text">Player</b> has completed the required lines and won the game!</p>
 
       <div class="victory-stats-card">
         <div class="vic-stat">
@@ -408,6 +417,14 @@
         <div class="vic-stat">
           <span class="vic-stat-label">Match Status</span>
           <span class="vic-stat-val status-saved">✓ Completed</span>
+        </div>
+      </div>
+
+      <!-- Player Standings in Victory Modal -->
+      <div id="victory-standings-box" class="victory-standings-box">
+        <div class="victory-standings-header">Final Team Standings</div>
+        <div id="victory-standings-list" class="victory-standings-list">
+          <!-- Rendered by JS -->
         </div>
       </div>
 

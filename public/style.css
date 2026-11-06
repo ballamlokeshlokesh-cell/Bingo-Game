@@ -1454,6 +1454,123 @@ body {
   color: var(--accent-success);
   font-size: 0.8rem;
 }
+
+/* Victory Standings Box */
+.victory-standings-box {
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 22px;
+  text-align: left;
+}
+.victory-standings-header {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 10px;
+}
+.victory-standings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.vic-standing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  font-size: 0.85rem;
+}
+.vic-standing-row.is-winner-row {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+}
+.vic-standing-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.vic-rank {
+  font-weight: 800;
+  color: #fbbf24;
+  font-size: 0.85rem;
+  min-width: 38px;
+}
+.vic-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fff;
+}
+.vic-name {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.vic-standing-right {
+  font-weight: 800;
+  color: #a5b4fc;
+  font-size: 0.8rem;
+}
+.is-winner-row .vic-standing-right {
+  color: #fbbf24;
+}
+
+/* BINGO Claim Banner */
+.bingo-claim-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(217, 119, 6, 0.35) 100%);
+  border: 1.5px solid #f59e0b;
+  border-radius: var(--radius-lg);
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  animation: pulseGold 2s infinite ease-in-out;
+  box-shadow: 0 0 25px rgba(245, 158, 11, 0.35);
+}
+@keyframes pulseGold {
+  0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.3); transform: scale(1); }
+  50% { box-shadow: 0 0 30px rgba(245, 158, 11, 0.6); transform: scale(1.01); }
+}
+.claim-banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.claim-banner-icon {
+  font-size: 1.8rem;
+}
+.claim-banner-text {
+  font-size: 1.05rem;
+  color: #fef3c7;
+  flex: 1;
+}
+.claim-action-btn {
+  background: #f59e0b !important;
+  color: #0b0f19 !important;
+  font-weight: 800 !important;
+  padding: 8px 18px !important;
+  border: none !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+  cursor: pointer;
+  border-radius: var(--radius-md) !important;
+  transition: transform 0.15s;
+}
+.claim-action-btn:hover {
+  transform: scale(1.05);
+}
+
 .victory-actions {
   display: flex;
   flex-direction: column;

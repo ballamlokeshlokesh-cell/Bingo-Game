@@ -51,8 +51,9 @@ function generateRoomCode() {
 function calculateLines(board, matrixSize, calledNumbers) {
   const dim = Math.round(Math.sqrt(matrixSize));
   if (dim * dim !== matrixSize) return { count: 0, lines: [] };
+  if (!Array.isArray(board) || board.length < matrixSize) return { count: 0, lines: [] };
 
-  const markedSet = new Set(calledNumbers);
+  const markedSet = new Set((calledNumbers || []).map(n => Number(n)));
   const completedLines = [];
 
   // Check rows
@@ -62,7 +63,7 @@ function calculateLines(board, matrixSize, calledNumbers) {
     for (let c = 0; c < dim; c++) {
       const idx = r * dim + c;
       rowIndices.push(idx);
-      if (!markedSet.has(board[idx])) {
+      if (!markedSet.has(Number(board[idx]))) {
         complete = false;
       }
     }
@@ -78,7 +79,7 @@ function calculateLines(board, matrixSize, calledNumbers) {
     for (let r = 0; r < dim; r++) {
       const idx = r * dim + c;
       colIndices.push(idx);
-      if (!markedSet.has(board[idx])) {
+      if (!markedSet.has(Number(board[idx]))) {
         complete = false;
       }
     }
@@ -93,7 +94,7 @@ function calculateLines(board, matrixSize, calledNumbers) {
   for (let i = 0; i < dim; i++) {
     const idx = i * dim + i;
     diag1Indices.push(idx);
-    if (!markedSet.has(board[idx])) {
+    if (!markedSet.has(Number(board[idx]))) {
       diag1Complete = false;
     }
   }
@@ -107,7 +108,7 @@ function calculateLines(board, matrixSize, calledNumbers) {
   for (let i = 0; i < dim; i++) {
     const idx = i * dim + (dim - 1 - i);
     diag2Indices.push(idx);
-    if (!markedSet.has(board[idx])) {
+    if (!markedSet.has(Number(board[idx]))) {
       diag2Complete = false;
     }
   }
@@ -377,10 +378,11 @@ io.on('connection', (socket) => {
       const players = await dbHelpers.getRoomPlayers(cleanCode);
       const playerStats = [];
       let winner = null;
+      const targetWinLines = Number(room.win_lines || 5);
 
       for (const p of players) {
         const lineCalc = calculateLines(p.matrix_board, room.matrix_size, updatedCalled);
-        const hasWon = lineCalc.count >= room.win_lines;
+        const hasWon = lineCalc.count >= targetWinLines;
         await dbHelpers.updatePlayerLines(cleanCode, p.username, lineCalc.count, hasWon);
 
         playerStats.push({
@@ -415,10 +417,10 @@ io.on('connection', (socket) => {
       if (winner) {
         io.to(cleanCode).emit('game_over', {
           winner,
-          winningLines: room.win_lines,
+          winningLines: targetWinLines,
           playerStats
         });
-        io.to(cleanCode).emit('system_message', `🎉 BINGO! ${winner} has won the game with ${room.win_lines} completed lines!`);
+        io.to(cleanCode).emit('system_message', `🎉 BINGO! ${winner} has won the game with ${targetWinLines} completed lines!`);
       } else {
         io.to(cleanCode).emit('system_message', `${userInfo.username} called [${num}]. Next turn: ${nextTurnPlayer}`);
       }
@@ -427,6 +429,68 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('call_number error:', err);
       callback && callback({ success: false, error: 'Failed to call number' });
+    }
+  });
+
+  // Claim Bingo (Instant Win Declaration & Synchronization)
+  socket.on('claim_bingo', async ({ roomCode, username }, callback) => {
+    try {
+      const cleanCode = (roomCode || '').trim().toUpperCase();
+      const cleanName = (username || '').trim();
+
+      const room = await dbHelpers.getRoom(cleanCode);
+      if (!room || room.status !== 'playing') {
+        return callback && callback({ success: false, error: 'Match is not active' });
+      }
+
+      const players = await dbHelpers.getRoomPlayers(cleanCode);
+      const targetWinLines = Number(room.win_lines || 5);
+
+      // Finish game in database
+      await dbHelpers.finishGame(cleanCode, cleanName, players);
+
+      const playerStats = (players || []).map(p => ({
+        username: p.username,
+        completedLines: p.username.toLowerCase() === cleanName.toLowerCase() ? targetWinLines : (p.completed_lines || 0),
+        hasWon: p.username.toLowerCase() === cleanName.toLowerCase()
+      }));
+
+      // Broadcast game_over to all players in the room
+      io.to(cleanCode).emit('game_over', {
+        winner: cleanName,
+        winningLines: targetWinLines,
+        playerStats
+      });
+
+      io.to(cleanCode).emit('system_message', `🎉 BINGO! ${cleanName} completed ${targetWinLines} lines and won the game!`);
+      callback && callback({ success: true });
+    } catch (err) {
+      console.error('claim_bingo error:', err);
+      callback && callback({ success: false, error: 'Failed to claim bingo' });
+    }
+  });
+
+  // Add AI Bot Player
+  socket.on('add_bot', async ({ roomCode }, callback) => {
+    try {
+      const cleanCode = (roomCode || '').trim().toUpperCase();
+      const room = await dbHelpers.getRoom(cleanCode);
+      if (!room) return callback && callback({ success: false, error: 'Room not found' });
+
+      const players = await dbHelpers.getRoomPlayers(cleanCode);
+      const botNames = ['RoboPlayer', 'BingoBot', 'AceMatrix', 'PixelPro', 'LuckyStrike', 'HyperMatrix'];
+      const unusedName = botNames.find(n => !players.some(p => p.username.toLowerCase() === n.toLowerCase())) || `Bot_${Math.floor(Math.random() * 90 + 10)}`;
+
+      await dbHelpers.getOrCreateUser(unusedName, '#ec4899');
+      await dbHelpers.joinRoomPlayer(cleanCode, null, unusedName, []);
+
+      const updatedPlayers = await dbHelpers.getRoomPlayers(cleanCode);
+      io.to(cleanCode).emit('room_updated', { room, players: updatedPlayers });
+      io.to(cleanCode).emit('system_message', `${unusedName} (AI) joined the lobby!`);
+      callback && callback({ success: true, botName: unusedName, players: updatedPlayers });
+    } catch (err) {
+      console.error('add_bot error:', err);
+      callback && callback({ success: false, error: 'Failed to add bot' });
     }
   });
 
@@ -456,19 +520,15 @@ io.on('connection', (socket) => {
       const updatedRoom = await dbHelpers.getRoom(cleanCode);
       const updatedPlayers = await dbHelpers.getRoomPlayers(cleanCode);
 
-      updatedPlayers.forEach(p => {
-        if (p.socket_id) {
-          const userBoard = playerBoards[p.username.toLowerCase()];
-          io.to(p.socket_id).emit('game_started', {
-            room: updatedRoom,
-            players: updatedPlayers,
-            myBoard: userBoard,
-            turnOrder: randomizedTurnOrder,
-            currentTurnPlayer: randomizedTurnOrder[0],
-            matrixSize: room.matrix_size,
-            winLines: room.win_lines
-          });
-        }
+      // Broadcast room-wide so everyone gets started with fresh boards and turn order!
+      io.to(cleanCode).emit('game_started', {
+        room: updatedRoom,
+        players: updatedPlayers,
+        allBoards: playerBoards,
+        turnOrder: randomizedTurnOrder,
+        currentTurnPlayer: randomizedTurnOrder[0],
+        matrixSize: room.matrix_size,
+        winLines: room.win_lines
       });
 
       io.to(cleanCode).emit('system_message', `New round started! Random turn order: ${randomizedTurnOrder.join(' → ')}`);

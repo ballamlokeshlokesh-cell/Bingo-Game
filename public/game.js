@@ -651,8 +651,8 @@
   if (btnAddBot) {
     btnAddBot.addEventListener('click', () => {
       if (!state.currentRoom) return;
-      const botNames = ['RoboPlayer', 'BingoBot', 'AceMatrix', 'PixelPro', 'LuckyStrike'];
-      const unusedName = botNames.find(n => !state.players.some(p => p.username === n)) || `Bot_${Math.floor(Math.random() * 90 + 10)}`;
+      const botNames = ['RoboPlayer', 'BingoBot', 'AceMatrix', 'PixelPro', 'LuckyStrike', 'HyperMatrix'];
+      const unusedName = botNames.find(n => !state.players.some(p => p.username.toLowerCase() === n.toLowerCase())) || `Bot_${Math.floor(Math.random() * 90 + 10)}`;
       const botPlayer = {
         username: unusedName,
         avatarColor: '#ec4899',
@@ -661,6 +661,15 @@
         isReady: true,
         completedLines: 0
       };
+
+      if (socket && state.isOnline) {
+        socket.emit('add_bot', { roomCode: state.currentRoom.room_code }, (res) => {
+          if (res && res.success) {
+            showToast(`Added AI Player: ${res.botName || unusedName}!`);
+          }
+        });
+      }
+
       state.players.push(botPlayer);
       state.currentRoom.players = state.players;
       localStorage.setItem('bingo_room_' + state.currentRoom.room_code, JSON.stringify(state.currentRoom));
@@ -1020,9 +1029,10 @@
 
   // Automatic execution of a number call across the game
   function executeNumberCall(num, caller) {
-    if (state.calledNumbers.includes(num)) return;
+    const numInt = Number(num);
+    if (state.calledNumbers.includes(numInt)) return;
 
-    state.calledNumbers.push(num);
+    state.calledNumbers.push(numInt);
 
     // Advance turn
     state.currentTurnIndex = (state.currentTurnIndex + 1) % state.turnOrder.length;
@@ -1032,46 +1042,35 @@
 
     // 1. Cross-out on board
     if (bingoGrid) {
-      const cell = bingoGrid.querySelector(`.bingo-cell[data-number="${num}"]`);
+      const cell = bingoGrid.querySelector(`.bingo-cell[data-number="${numInt}"]`);
       if (cell) {
         cell.classList.add('marked');
       }
     }
 
     // 2. Spotlight
-    if (spotlightNumber) spotlightNumber.textContent = num;
+    if (spotlightNumber) spotlightNumber.textContent = numInt;
     if (spotlightCaller) spotlightCaller.textContent = `Called by ${caller}`;
 
     // 3. Ticker
     if (calledCount) calledCount.textContent = state.calledNumbers.length;
     renderCalledChips();
 
-    // 4. Line detection
+    // 4. Line detection (checks win condition and triggers victory)
     evaluateCompletedLines();
 
-    // 5. Update standings
-    const myLines = state.completedLines.length;
-    const playerRecord = state.players.find(p => p.username.toLowerCase() === state.username.toLowerCase());
-    if (playerRecord) playerRecord.completedLines = myLines;
-
-    updateStandings(state.players);
     updateTurnDisplay();
-
-    // Check winner
-    if (myLines >= state.winLines) {
-      declareWinner(state.username);
-    }
 
     // Broadcast call to other tabs
     broadcastSyncMessage({
       type: 'NUMBER_CALLED',
       roomCode: state.currentRoom ? state.currentRoom.room_code : '',
-      number: num,
+      number: numInt,
       caller: caller,
       nextTurnPlayer: state.currentTurnPlayer,
       nextTurnIndex: state.currentTurnIndex,
       calledNumbers: state.calledNumbers,
-      winner: myLines >= state.winLines ? state.username : null
+      winner: state.completedLines.length >= state.winLines ? state.username : null
     });
 
     // Check if next turn belongs to an AI Bot
@@ -1099,10 +1098,10 @@
   // Socket.io number called handler
   if (socket) {
     socket.on('number_called', (data) => {
-      const num = data.calledNumber;
+      const num = Number(data.calledNumber);
       const caller = data.calledBy;
 
-      state.calledNumbers = data.allCalledNumbers;
+      state.calledNumbers = (data.allCalledNumbers || []).map(n => Number(n));
       state.currentTurnPlayer = data.currentTurnPlayer;
       state.currentTurnIndex = data.currentTurnIndex;
 
@@ -1121,16 +1120,31 @@
       if (calledCount) calledCount.textContent = state.calledNumbers.length;
       renderCalledChips();
 
+      // Check our board completion
       evaluateCompletedLines();
 
       if (data.playerStats) {
+        data.playerStats.forEach(stat => {
+          const p = state.players.find(x => x.username.toLowerCase() === stat.username.toLowerCase());
+          if (p) p.completedLines = stat.completedLines;
+        });
         updateStandings(data.playerStats);
       }
       updateTurnDisplay();
+
+      if (data.winner) {
+        triggerVictoryFlow(data.winner, state.winLines);
+      }
     });
 
     socket.on('game_over', (data) => {
-      declareWinner(data.winner, data.winningLines);
+      if (data.playerStats) {
+        data.playerStats.forEach(stat => {
+          const p = state.players.find(x => x.username.toLowerCase() === stat.username.toLowerCase());
+          if (p) p.completedLines = stat.completedLines;
+        });
+      }
+      triggerVictoryFlow(data.winner, data.winningLines || state.winLines);
     });
 
     socket.on('room_updated', ({ room, players }) => {
@@ -1175,7 +1189,7 @@
   // --- EVALUATE COMPLETED LINES ---
   function evaluateCompletedLines() {
     const dim = Math.round(Math.sqrt(state.matrixSize));
-    const markedSet = new Set(state.calledNumbers);
+    const markedSet = new Set((state.calledNumbers || []).map(n => Number(n)));
     const completedLines = [];
 
     // Rows
@@ -1184,7 +1198,7 @@
       let full = true;
       for (let c = 0; c < dim; c++) {
         const idx = r * dim + c;
-        const val = state.myBoard[idx];
+        const val = Number(state.myBoard[idx]);
         cells.push(val);
         if (!markedSet.has(val)) full = false;
       }
@@ -1197,28 +1211,28 @@
       let full = true;
       for (let r = 0; r < dim; r++) {
         const idx = r * dim + c;
-        const val = state.myBoard[idx];
+        const val = Number(state.myBoard[idx]);
         cells.push(val);
         if (!markedSet.has(val)) full = false;
       }
       if (full) completedLines.push(cells);
     }
 
-    // Diagonal 1
+    // Diagonal 1 (top-left to bottom-right)
     const diag1 = [];
     let d1Full = true;
     for (let i = 0; i < dim; i++) {
-      const val = state.myBoard[i * dim + i];
+      const val = Number(state.myBoard[i * dim + i]);
       diag1.push(val);
       if (!markedSet.has(val)) d1Full = false;
     }
     if (d1Full) completedLines.push(diag1);
 
-    // Diagonal 2
+    // Diagonal 2 (top-right to bottom-left)
     const diag2 = [];
     let d2Full = true;
     for (let i = 0; i < dim; i++) {
-      const val = state.myBoard[i * dim + (dim - 1 - i)];
+      const val = Number(state.myBoard[i * dim + (dim - 1 - i)]);
       diag2.push(val);
       if (!markedSet.has(val)) d2Full = false;
     }
@@ -1233,17 +1247,17 @@
     }
 
     // Highlight completed line cells
-    const lineNumbers = new Set(completedLines.flat());
+    const lineNumbers = new Set(completedLines.flat().map(n => Number(n)));
     if (bingoGrid) {
       bingoGrid.querySelectorAll('.bingo-cell').forEach(c => {
-        const n = parseInt(c.dataset.number, 10);
+        const n = Number(c.dataset.number);
         if (lineNumbers.has(n)) {
           c.classList.add('line-completed');
         }
       });
     }
 
-    // Update B-I-N-G-O letters
+    // Update B-I-N-G-O letters or 10x10 progress bar
     const count = completedLines.length;
     if (state.matrixSize === 25) {
       if (myCompletedLinesCount) myCompletedLinesCount.textContent = count;
@@ -1257,6 +1271,83 @@
       const pct = Math.min(100, Math.round((count / state.winLines) * 100));
       if (progressBarFill) progressBarFill.style.width = `${pct}%`;
     }
+
+    // Update my score in standings list
+    const meRecord = state.players.find(p => p.username.toLowerCase() === state.username.toLowerCase());
+    if (meRecord) meRecord.completedLines = count;
+    updateStandings(state.players);
+
+    // Show/hide BINGO claim banner
+    const claimBanner = document.getElementById('bingo-claim-banner');
+    if (claimBanner) {
+      if (count >= state.winLines) {
+        claimBanner.classList.remove('hidden');
+      } else if (!state.gameActive) {
+        claimBanner.classList.remove('hidden');
+      } else {
+        claimBanner.classList.add('hidden');
+      }
+    }
+
+    // AUTOMATIC RESULT DECLARATION: When winning lines are reached!
+    if (count >= state.winLines && state.gameActive) {
+      triggerVictoryFlow(state.username, state.winLines);
+    }
+  }
+
+  // --- TRIGGER VICTORY FLOW (Across Online & Multi-Tab Sync) ---
+  function triggerVictoryFlow(winnerName, winLinesCount = state.winLines) {
+    declareWinner(winnerName, winLinesCount);
+
+    // If online via socket, notify server
+    if (socket && state.isOnline && state.currentRoom) {
+      socket.emit('claim_bingo', {
+        roomCode: state.currentRoom.room_code,
+        username: winnerName
+      });
+    }
+
+    // Broadcast GAME_OVER to other tabs/windows
+    broadcastSyncMessage({
+      type: 'GAME_OVER',
+      roomCode: state.currentRoom ? state.currentRoom.room_code : '',
+      winner: winnerName,
+      winningLines: winLinesCount,
+      calledNumbers: state.calledNumbers
+    });
+  }
+
+  // --- RENDER VICTORY STANDINGS ---
+  function renderVictoryStandings(winnerName) {
+    const list = document.getElementById('victory-standings-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+    const sorted = [...state.players].sort((a, b) => {
+      const aIsWin = a.username.toLowerCase() === (winnerName || '').toLowerCase();
+      const bIsWin = b.username.toLowerCase() === (winnerName || '').toLowerCase();
+      if (aIsWin) return -1;
+      if (bIsWin) return 1;
+      return (b.completedLines || 0) - (a.completedLines || 0);
+    });
+
+    sorted.forEach((p, idx) => {
+      const isWinner = p.username.toLowerCase() === (winnerName || '').toLowerCase();
+      const isMe = p.username.toLowerCase() === state.username.toLowerCase();
+      const row = document.createElement('div');
+      row.className = `vic-standing-row ${isWinner ? 'is-winner-row' : ''}`;
+      row.innerHTML = `
+        <div class="vic-standing-left">
+          <span class="vic-rank">${isWinner ? '👑 1st' : `#${idx + 1}`}</span>
+          <span class="vic-avatar" style="background:${p.avatarColor || '#6366f1'};">${p.username.charAt(0).toUpperCase()}</span>
+          <span class="vic-name">${p.username} ${isMe ? '(You)' : ''}</span>
+        </div>
+        <div class="vic-standing-right">
+          <span class="vic-lines-score">${isWinner ? `${state.winLines} Lines (WINNER)` : `${p.completedLines || 0} Lines`}</span>
+        </div>
+      `;
+      list.appendChild(row);
+    });
   }
 
   // --- UPDATE STANDINGS ---
@@ -1285,36 +1376,76 @@
   // --- WINNER DECLARATION ---
   function declareWinner(winnerName, winLinesCount = state.winLines) {
     state.gameActive = false;
-    if (winnerNameDisplay) winnerNameDisplay.textContent = winnerName;
+    const safeWinner = (winnerName || 'Winner').trim();
+
+    if (winnerNameDisplay) winnerNameDisplay.textContent = safeWinner;
     if (vicTotalCalls) vicTotalCalls.textContent = state.calledNumbers.length;
     if (vicWinningLines) vicWinningLines.textContent = winLinesCount;
+
+    const victorySubtitle = document.getElementById('victory-subtitle-text');
+    const isMe = safeWinner.toLowerCase() === state.username.toLowerCase();
+    if (victorySubtitle) {
+      victorySubtitle.innerHTML = isMe
+        ? `🎉 <b class="highlight-text">Congratulations ${state.username}!</b> You completed all required lines and won the match!`
+        : `👑 <b class="highlight-text">${safeWinner}</b> completed all required lines and won the match!`;
+    }
+
+    renderVictoryStandings(safeWinner);
+
+    const claimBanner = document.getElementById('bingo-claim-banner');
+    if (claimBanner) {
+      claimBanner.classList.remove('hidden');
+      const bannerText = claimBanner.querySelector('.claim-banner-text');
+      if (bannerText) {
+        bannerText.innerHTML = isMe
+          ? `🏆 <b>YOU WON BINGO!</b> Completed ${winLinesCount} lines!`
+          : `👑 <b>${safeWinner} WON!</b> Completed ${winLinesCount} lines.`;
+      }
+    }
 
     playVictorySound();
 
     if (typeof confetti === 'function') {
-      confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-      setTimeout(() => {
-        confetti({ particleCount: 80, angle: 60, spread: 55, origin: { x: 0 } });
-        confetti({ particleCount: 80, angle: 120, spread: 55, origin: { x: 1 } });
-      }, 350);
+      try {
+        confetti({ particleCount: 160, spread: 80, origin: { y: 0.55 } });
+        setTimeout(() => {
+          confetti({ particleCount: 90, angle: 60, spread: 60, origin: { x: 0 } });
+          confetti({ particleCount: 90, angle: 120, spread: 60, origin: { x: 1 } });
+        }, 300);
+      } catch (e) {}
     }
 
     if (modalVictory) modalVictory.classList.remove('hidden');
 
-    const stats = JSON.parse(localStorage.getItem('bingo_local_stats') || '{}');
-    const myStats = stats[state.username] || { games_played: 0, games_won: 0, username: state.username, avatar_color: state.avatarColor };
-    myStats.games_played++;
-    if (winnerName.toLowerCase() === state.username.toLowerCase()) {
-      myStats.games_won++;
-    }
-    stats[state.username] = myStats;
-    localStorage.setItem('bingo_local_stats', JSON.stringify(stats));
+    try {
+      const stats = JSON.parse(localStorage.getItem('bingo_local_stats') || '{}');
+      const myStats = stats[state.username] || { games_played: 0, games_won: 0, username: state.username, avatar_color: state.avatarColor };
+      myStats.games_played++;
+      if (isMe) {
+        myStats.games_won++;
+      }
+      stats[state.username] = myStats;
+      localStorage.setItem('bingo_local_stats', JSON.stringify(stats));
+    } catch (e) {}
+  }
+
+  // Claim Bingo Button Handler
+  const btnClaimBingo = document.getElementById('btn-claim-bingo');
+  if (btnClaimBingo) {
+    btnClaimBingo.addEventListener('click', () => {
+      triggerVictoryFlow(state.username, state.winLines);
+      if (modalVictory) modalVictory.classList.remove('hidden');
+    });
   }
 
   // Rematch
   if (btnRematch) {
     btnRematch.addEventListener('click', () => {
-      if (socket && state.isOnline) {
+      if (modalVictory) modalVictory.classList.add('hidden');
+      const claimBanner = document.getElementById('bingo-claim-banner');
+      if (claimBanner) claimBanner.classList.add('hidden');
+
+      if (socket && state.isOnline && state.currentRoom) {
         socket.emit('rematch', { roomCode: state.currentRoom.room_code });
       } else {
         handleStartGame();
@@ -1325,6 +1456,8 @@
   if (btnBackHub) {
     btnBackHub.addEventListener('click', () => {
       if (modalVictory) modalVictory.classList.add('hidden');
+      const claimBanner = document.getElementById('bingo-claim-banner');
+      if (claimBanner) claimBanner.classList.add('hidden');
       showView('hub');
     });
   }
@@ -1397,12 +1530,20 @@
       }
     } else if (msg.type === 'NUMBER_CALLED') {
       if (state.currentRoom && state.currentRoom.room_code.toUpperCase() === msg.roomCode.toUpperCase()) {
-        if (!state.calledNumbers.includes(msg.number)) {
-          executeNumberCall(msg.number, msg.caller);
+        const numInt = Number(msg.number);
+        if (!state.calledNumbers.includes(numInt)) {
+          executeNumberCall(numInt, msg.caller);
         }
         if (msg.winner) {
-          declareWinner(msg.winner);
+          triggerVictoryFlow(msg.winner, msg.winningLines || state.winLines);
         }
+      }
+    } else if (msg.type === 'GAME_OVER') {
+      if (state.currentRoom && state.currentRoom.room_code.toUpperCase() === msg.roomCode.toUpperCase()) {
+        if (msg.calledNumbers) {
+          state.calledNumbers = msg.calledNumbers.map(n => Number(n));
+        }
+        declareWinner(msg.winner, msg.winningLines || state.winLines);
       }
     } else if (msg.type === 'CHAT') {
       if (state.currentRoom && state.currentRoom.room_code.toUpperCase() === msg.roomCode.toUpperCase()) {

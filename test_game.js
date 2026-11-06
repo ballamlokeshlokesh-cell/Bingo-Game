@@ -145,7 +145,7 @@ async function runTests() {
   assert.strictEqual(updatedRoom.current_turn_index, nextIndex);
   console.log(`✓ ${firstCaller} called number [${numberToCall}]. Automatically crossed out in room state!`);
 
-  // Test 7: Line Calculation (Rows, Columns, Diagonals)
+  // Test 7: Line Calculation (Rows, Columns, Diagonals, Full B-I-N-G-O)
   console.log('7. Testing Line Calculation and B-I-N-G-O Completion...');
   // Complete row 0 of Alice's board
   const row0 = [boardAlice[0], boardAlice[1], boardAlice[2], boardAlice[3], boardAlice[4]];
@@ -158,6 +158,21 @@ async function runTests() {
   res = calculateLines(boardAlice, 25, [...row0, ...col0]);
   assert.strictEqual(res.count, 2);
   console.log('✓ 2 lines detected (B-I unlocked)');
+
+  // Complete 5 lines for full B-I-N-G-O result
+  const row1 = [boardAlice[5], boardAlice[6], boardAlice[7], boardAlice[8], boardAlice[9]];
+  const row2 = [boardAlice[10], boardAlice[11], boardAlice[12], boardAlice[13], boardAlice[14]];
+  const row3 = [boardAlice[15], boardAlice[16], boardAlice[17], boardAlice[18], boardAlice[19]];
+  res = calculateLines(boardAlice, 25, [...row0, ...col0, ...row1, ...row2, ...row3]);
+  assert(res.count >= 5, `Expected >= 5 lines, got ${res.count}`);
+  console.log(`✓ Full B-I-N-G-O victory condition reached: ${res.count} lines completed!`);
+
+  // Test 10x10 matrix (100 numbers) line detection
+  const board100 = generateRandomBoard(100);
+  const row0_100 = board100.slice(0, 10);
+  const res100 = calculateLines(board100, 100, row0_100);
+  assert.strictEqual(res100.count, 1);
+  console.log('✓ 10x10 matrix (100 numbers) line calculation verified!');
 
   // Test 8: Win Verification and SQLite Stats Update
   console.log('8. Testing Victory and Persistent SQLite Stats...');
